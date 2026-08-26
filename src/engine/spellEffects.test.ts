@@ -3,8 +3,10 @@ import {
   applyCorruption,
   applyExplosion,
   applyTeleport,
+  applyTeleportWithPromotion,
   getAdjacentSquares,
   getOrthogonalAdjacentSquares,
+  getTeleportPromotionSquare,
   promoteEdgePawns,
 } from '@/engine/spellEffects';
 
@@ -91,6 +93,29 @@ describe('spellEffects', () => {
       // Nothing should have moved — the throw must happen before any mutation.
       expect(chess.get('e1')).toEqual({ type: 'k', color: 'w' });
       expect(chess.get('a1')).toEqual({ type: 'r', color: 'w' });
+    });
+  });
+
+  describe('getTeleportPromotionSquare', () => {
+    it('returns the landing square when a pawn would reach the enemy back rank', () => {
+      const chess = new Chess('k3R3/8/8/8/8/8/4P3/4K3 w - - 0 1');
+      expect(getTeleportPromotionSquare(chess, 'e2', 'e8')).toBe('e8');
+      expect(getTeleportPromotionSquare(chess, 'e8', 'e2')).toBe('e8');
+    });
+
+    it('returns null when neither piece is a pawn reaching its promotion rank', () => {
+      const chess = new Chess('k3R3/8/8/8/8/R7/4P3/4K3 w - - 0 1');
+      expect(getTeleportPromotionSquare(chess, 'a3', 'e2')).toBeNull();
+    });
+  });
+
+  describe('applyTeleportWithPromotion', () => {
+    it("promotes the pawn to the chosen piece and moves the other piece into the pawn's old square", () => {
+      const chess = new Chess('k3R3/8/8/8/8/8/4P3/4K3 w - - 0 1');
+      applyTeleportWithPromotion(chess, 'e2', 'e8', 'n');
+      expect(chess.get('e8')).toEqual({ type: 'n', color: 'w' });
+      expect(chess.get('e2')).toEqual({ type: 'r', color: 'w' });
+      expect(() => new Chess(chess.fen())).not.toThrow();
     });
   });
 

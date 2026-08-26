@@ -100,6 +100,42 @@ export function wouldTeleportStrandPawn(chess: Chess, squareA: Square, squareB: 
   return strandsOwnBackRank(chess.get(squareA), squareB) || strandsOwnBackRank(chess.get(squareB), squareA);
 }
 
+/**
+ * If swapping the pieces on these two squares would land a pawn on the *opponent's* back rank —
+ * a legitimate promotion, same as reaching it by a normal move — returns the square the pawn
+ * ends up on so the caller can show the promotion picker before applying the swap. Returns null
+ * when no promotion is involved.
+ */
+export function getTeleportPromotionSquare(chess: Chess, squareA: Square, squareB: Square): Square | null {
+  const promotesOnLanding = (piece: { type: PieceSymbol; color: 'w' | 'b' } | undefined, destSquare: Square) =>
+    piece?.type === 'p' && destSquare[1] === (piece.color === 'w' ? '8' : '1');
+  if (promotesOnLanding(chess.get(squareA), squareB)) return squareB;
+  if (promotesOnLanding(chess.get(squareB), squareA)) return squareA;
+  return null;
+}
+
+/**
+ * Completes a Téléportation swap where the pawn landing on `promotionSquare` becomes the given
+ * `promotionPiece` — chosen by the player via the promotion modal — instead of always auto-
+ * queening (which `applyTeleport`'s own safety net does when nobody asked for a choice).
+ */
+export function applyTeleportWithPromotion(
+  chess: Chess,
+  pawnSquare: Square,
+  promotionSquare: Square,
+  promotionPiece: 'q' | 'r' | 'b' | 'n',
+): void {
+  const pawn = chess.get(pawnSquare);
+  const other = chess.get(promotionSquare);
+  if (!pawn || pawn.type !== 'p' || !other) {
+    throw new Error('applyTeleportWithPromotion: invalid squares for a teleport promotion');
+  }
+  chess.remove(pawnSquare);
+  chess.remove(promotionSquare);
+  chess.put({ type: promotionPiece, color: pawn.color }, promotionSquare);
+  chess.put({ type: other.type, color: other.color }, pawnSquare);
+}
+
 /** Swaps two allied pieces' positions directly on the board. Neither square may hold a king. */
 export function applyTeleport(chess: Chess, squareA: Square, squareB: Square): void {
   assertSquareIsNotKing(chess, squareA, 'teleport');

@@ -21,8 +21,10 @@ import {
   applyCorruption,
   applyExplosion,
   applyTeleport,
+  applyTeleportWithPromotion,
   getBlastSquares,
   getOrthogonalAdjacentSquares,
+  getTeleportPromotionSquare,
   promoteEdgePawns,
   wouldTeleportStrandPawn,
 } from '@/engine/spellEffects';
@@ -97,7 +99,12 @@ export default function GameScreen() {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [legalTargets, setLegalTargets] = useState<Square[]>([]);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
-  const [promotionPending, setPromotionPending] = useState<{ from: Square; to: Square; isLeap: boolean } | null>(null);
+  const [promotionPending, setPromotionPending] = useState<{
+    from: Square;
+    to: Square;
+    isLeap: boolean;
+    isTeleport?: boolean;
+  } | null>(null);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [drawOfferMessage, setDrawOfferMessage] = useState<string | null>(null);
@@ -534,6 +541,49 @@ export default function GameScreen() {
     [finishMoveEffects, resolvedPlayerColor],
   );
 
+  /**
+   * Shared tail end of a Téléportation cast, run once the swap (and any promotion) has already
+   * been applied to the board — remaps any of our own armed-square trackers that pointed at
+   * either swapped square, consumes the spell, and re-triggers all the usual post-cast effects.
+   * Split out because a teleport that promotes a pawn defers the swap itself until the player
+   * picks a piece (see `handlePromotionSelect`), but needs to finish the same way either path.
+   */
+  const finishTeleportResolution = useCallback(
+    (squareA: Square, squareB: Square) => {
+      const chess = chessRef.current;
+      if (shieldedSquare === squareA) setShieldedSquare(squareB);
+      else if (shieldedSquare === squareB) setShieldedSquare(squareA);
+      if (leapArmedSquare === squareA) setLeapArmedSquare(squareB);
+      else if (leapArmedSquare === squareB) setLeapArmedSquare(squareA);
+      if (celesteArmedSquare === squareA) setCelesteArmedSquare(squareB);
+      else if (celesteArmedSquare === squareB) setCelesteArmedSquare(squareA);
+      if (resurrectionArmedSquare === squareA) setResurrectionArmedSquare(squareB);
+      else if (resurrectionArmedSquare === squareB) setResurrectionArmedSquare(squareA);
+      setOwnedSpells((prev) => {
+        const idx = prev.findIndex((s) => s.spellId === 'teleport');
+        if (idx === -1) return prev;
+        return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+      });
+      setArmedSpell(null);
+      setSpellCastTargets([]);
+      setFen(chess.fen());
+      playSfx('spellTeleport');
+      haptics.success();
+      applyGhostCheckIfAny();
+      checkForSpellInducedGameOver();
+    },
+    [
+      shieldedSquare,
+      leapArmedSquare,
+      celesteArmedSquare,
+      resurrectionArmedSquare,
+      playSfx,
+      haptics,
+      applyGhostCheckIfAny,
+      checkForSpellInducedGameOver,
+    ],
+  );
+
   // AI turn
   useEffect(() => {
     const chess = chessRef.current;
@@ -666,21 +716,16 @@ export default function GameScreen() {
       const first = spellCastTargets[0]!;
       if (first === square) return;
       if (wouldTeleportStrandPawn(chess, first, square)) return;
+      // Landing on the enemy's back rank is a real promotion — let the player pick a piece
+      // instead of applying the swap immediately (see finishTeleportResolution).
+      const promotionSquare = getTeleportPromotionSquare(chess, first, square);
+      if (promotionSquare) {
+        const pawnSquare = promotionSquare === first ? square : first;
+        setPromotionPending({ from: pawnSquare, to: promotionSquare, isLeap: false, isTeleport: true });
+        return;
+      }
       applyTeleport(chess, first, square);
-      if (shieldedSquare === first) setShieldedSquare(square);
-      else if (shieldedSquare === square) setShieldedSquare(first);
-      if (leapArmedSquare === first) setLeapArmedSquare(square);
-      else if (leapArmedSquare === square) setLeapArmedSquare(first);
-      if (celesteArmedSquare === first) setCelesteArmedSquare(square);
-      else if (celesteArmedSquare === square) setCelesteArmedSquare(first);
-      if (resurrectionArmedSquare === first) setResurrectionArmedSquare(square);
-      else if (resurrectionArmedSquare === square) setResurrectionArmedSquare(first);
-      consumeArmedSpell();
-      setFen(chess.fen());
-      playSfx('spellTeleport');
-      haptics.success();
-      applyGhostCheckIfAny();
-      checkForSpellInducedGameOver();
+      finishTeleportResolution(first, square);
       return;
     }
 
@@ -818,7 +863,10 @@ export default function GameScreen() {
 
   const handlePromotionSelect = (piece: PieceSymbol) => {
     if (!promotionPending) return;
-    if (promotionPending.isLeap) {
+    if (promotionPending.isTeleport) {
+      applyTeleportWithPromotion(chessRef.current, promotionPending.from, promotionPending.to, piece as 'q' | 'r' | 'b' | 'n');
+      finishTeleportResolution(promotionPending.from, promotionPending.to);
+    } else if (promotionPending.isLeap) {
       applyLeapMoveAndAdvance(promotionPending.from, promotionPending.to, piece);
     } else {
       applyMove({ from: promotionPending.from, to: promotionPending.to, promotion: piece });
