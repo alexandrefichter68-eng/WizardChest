@@ -17,7 +17,15 @@ import { findKingSquare, isEnemyKingAttacked } from '@/engine/boardUtils';
 import { applyCelesteMove, getCelesteDestinations } from '@/engine/celesteMoves';
 import { evaluatePosition } from '@/engine/evaluation';
 import { applyLeapMove, getLeapDestinations } from '@/engine/leapMoves';
-import { applyCorruption, applyExplosion, applyTeleport, getBlastSquares, getOrthogonalAdjacentSquares, promoteEdgePawns } from '@/engine/spellEffects';
+import {
+  applyCorruption,
+  applyExplosion,
+  applyTeleport,
+  getBlastSquares,
+  getOrthogonalAdjacentSquares,
+  promoteEdgePawns,
+  wouldTeleportStrandPawn,
+} from '@/engine/spellEffects';
 import { evaluateAchievements } from '@/domain/achievementRules';
 import { getBoardTheme, getPieceTheme } from '@/domain/cosmetics';
 import { getDivisionById } from '@/domain/divisions';
@@ -657,6 +665,7 @@ export default function GameScreen() {
       }
       const first = spellCastTargets[0]!;
       if (first === square) return;
+      if (wouldTeleportStrandPawn(chess, first, square)) return;
       applyTeleport(chess, first, square);
       if (shieldedSquare === first) setShieldedSquare(square);
       else if (shieldedSquare === square) setShieldedSquare(first);

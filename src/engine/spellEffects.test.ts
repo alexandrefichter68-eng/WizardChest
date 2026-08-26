@@ -66,9 +66,17 @@ describe('spellEffects', () => {
     });
 
     it('does not change whose turn it is', () => {
-      const chess = new Chess('k7/8/8/8/8/8/4P3/R3K3 w - - 0 1');
-      applyTeleport(chess, 'a1', 'e2');
+      const chess = new Chess('k7/8/8/8/8/R7/4P3/4K3 w - - 0 1');
+      applyTeleport(chess, 'a3', 'e2');
       expect(chess.turn()).toBe('w');
+    });
+
+    it('refuses to strand a pawn on its own back rank (no promotion equivalent, would be a free queen for nothing)', () => {
+      const chess = new Chess('k7/8/8/8/8/8/4P3/R3K3 w - - 0 1');
+      expect(() => applyTeleport(chess, 'a1', 'e2')).toThrow();
+      // Nothing should have moved — the throw must happen before any mutation.
+      expect(chess.get('a1')).toEqual({ type: 'r', color: 'w' });
+      expect(chess.get('e2')).toEqual({ type: 'p', color: 'w' });
     });
 
     it('throws if either square is empty', () => {

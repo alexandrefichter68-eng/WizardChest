@@ -1,4 +1,4 @@
-import { Chess, type Square } from 'chess.js';
+import { Chess, type PieceSymbol, type Square } from 'chess.js';
 import { assertSquareIsNotKing } from '@/engine/boardUtils';
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
@@ -87,6 +87,19 @@ export function promoteEdgePawns(chess: Chess, squares: Square[]): void {
   }
 }
 
+/**
+ * True if swapping the pieces on these two squares would leave a pawn sitting on its own
+ * non-promoting back rank (rank 1 for white, rank 8 for black). Landing on the *opponent's* back
+ * rank is a legitimate promotion (see `promoteEdgePawns`), but a pawn stranded on its own home
+ * rank has no equivalent in real chess and would otherwise hand out a free queen for nothing —
+ * that swap is rejected outright instead.
+ */
+export function wouldTeleportStrandPawn(chess: Chess, squareA: Square, squareB: Square): boolean {
+  const strandsOwnBackRank = (piece: { type: PieceSymbol; color: 'w' | 'b' } | undefined, destSquare: Square) =>
+    piece?.type === 'p' && destSquare[1] === (piece.color === 'w' ? '1' : '8');
+  return strandsOwnBackRank(chess.get(squareA), squareB) || strandsOwnBackRank(chess.get(squareB), squareA);
+}
+
 /** Swaps two allied pieces' positions directly on the board. Neither square may hold a king. */
 export function applyTeleport(chess: Chess, squareA: Square, squareB: Square): void {
   assertSquareIsNotKing(chess, squareA, 'teleport');
@@ -94,6 +107,9 @@ export function applyTeleport(chess: Chess, squareA: Square, squareB: Square): v
   const pieceA = chess.get(squareA);
   const pieceB = chess.get(squareB);
   if (!pieceA || !pieceB) throw new Error('applyTeleport: both squares must hold a piece');
+  if (wouldTeleportStrandPawn(chess, squareA, squareB)) {
+    throw new Error('applyTeleport: cannot strand a pawn on its own back rank');
+  }
   chess.remove(squareA);
   chess.remove(squareB);
   chess.put({ type: pieceA.type, color: pieceA.color }, squareB);
