@@ -11,7 +11,8 @@
     "primaryColor": "#7C5CFF",
     "newArchEnabled": true,
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "baseUrl": "/WizardChest"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
