@@ -1,4 +1,5 @@
 import { Chess, type Square } from 'chess.js';
+import { assertSquareIsNotKing } from '@/engine/boardUtils';
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
 
@@ -26,6 +27,27 @@ export function getAdjacentSquares(square: Square): Square[] {
   return result;
 }
 
+/** The blast radius of a "Cataclysme" cast on `targetSquare` — the target plus its 8 neighbors. */
+export function getBlastSquares(targetSquare: Square): Square[] {
+  return [targetSquare, ...getAdjacentSquares(targetSquare)];
+}
+
+/** The 4 orthogonal neighbors of a square (used by "Corruption", which is linear-only, no diagonals). */
+export function getOrthogonalAdjacentSquares(square: Square): Square[] {
+  const [f, r] = toCoords(square);
+  const result: Square[] = [];
+  for (const [df, dr] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]) {
+    const sq = toSquare(f + df!, r + dr!);
+    if (sq) result.push(sq);
+  }
+  return result;
+}
+
 export interface ExplosionResult {
   destroyedSquares: Square[];
 }
@@ -37,7 +59,7 @@ export interface ExplosionResult {
  * untouched, since casting a spell doesn't end the turn.
  */
 export function applyExplosion(chess: Chess, targetSquare: Square): ExplosionResult {
-  const squaresToClear = [targetSquare, ...getAdjacentSquares(targetSquare)];
+  const squaresToClear = getBlastSquares(targetSquare);
   const destroyedSquares: Square[] = [];
   for (const square of squaresToClear) {
     const piece = chess.get(square);
@@ -51,6 +73,8 @@ export function applyExplosion(chess: Chess, targetSquare: Square): ExplosionRes
 
 /** Swaps two allied pieces' positions directly on the board. Neither square may hold a king. */
 export function applyTeleport(chess: Chess, squareA: Square, squareB: Square): void {
+  assertSquareIsNotKing(chess, squareA, 'teleport');
+  assertSquareIsNotKing(chess, squareB, 'teleport');
   const pieceA = chess.get(squareA);
   const pieceB = chess.get(squareB);
   if (!pieceA || !pieceB) throw new Error('applyTeleport: both squares must hold a piece');
@@ -58,4 +82,17 @@ export function applyTeleport(chess: Chess, squareA: Square, squareB: Square): v
   chess.remove(squareB);
   chess.put({ type: pieceA.type, color: pieceA.color }, squareB);
   chess.put({ type: pieceB.type, color: pieceB.color }, squareA);
+}
+
+/**
+ * "Corruption": the targeted enemy piece switches sides and becomes an allied piece. Never a
+ * king — magic can bend the board, never take direct control of a king. No turn pass; like
+ * Cataclysme/Téléportation, this is a mid-turn effect the caster's own move follows afterward.
+ */
+export function applyCorruption(chess: Chess, targetSquare: Square, newColor: 'w' | 'b'): void {
+  assertSquareIsNotKing(chess, targetSquare, 'corruption');
+  const piece = chess.get(targetSquare);
+  if (!piece) throw new Error('applyCorruption: target square must hold a piece');
+  chess.remove(targetSquare);
+  chess.put({ type: piece.type, color: newColor }, targetSquare);
 }

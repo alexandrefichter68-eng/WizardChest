@@ -39,6 +39,23 @@ describe('leapMoves', () => {
     expect(getLeapDestinations(chess, 'e1')).toEqual([]);
   });
 
+  it('never lets a leap "capture" the enemy king, even in an anomalous position where it is en prise mid-turn', () => {
+    // Contrived FEN: it's white's turn, and black's king on d4 sits right where white's bishop on
+    // a1 could otherwise land via leap (jumping past the pawns). chess.js's own FEN validation
+    // doesn't reject "opponent king in check while it's my turn" — exactly the kind of position a
+    // spell-induced "échec fantôme" (not yet resolved by a real move) can produce. The king must
+    // never be a valid leap destination, whatever the reason it's exposed.
+    const chess = new Chess('8/8/8/8/3k4/2p5/1p6/B6K w - - 0 1');
+    expect(getLeapDestinations(chess, 'a1')).not.toContain('d4');
+  });
+
+  it('applyLeapMove refuses to remove a king even if somehow asked to', () => {
+    const chess = new Chess('8/8/8/8/3k4/2p5/1p6/B6K w - - 0 1');
+    expect(() => applyLeapMove(chess, 'a1', 'd4')).toThrow();
+    // The king must still be on the board afterward — the throw must happen before any mutation.
+    expect(chess.get('d4')).toEqual({ type: 'k', color: 'b' });
+  });
+
   it('lets a pawn leap over a blocking piece for its two-square opening push, but not onto an occupied square', () => {
     const chess = new Chess('k7/8/8/8/8/3p4/3P4/7K w - - 0 1');
     const destinations = getLeapDestinations(chess, 'd2');

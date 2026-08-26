@@ -1,5 +1,4 @@
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
-import type { MusicTrackId } from '@/types';
+import { createAudioPlayer, createAudioPlaylist, setAudioModeAsync, type AudioPlayer, type AudioPlaylist } from 'expo-audio';
 
 export type SfxName =
   | 'move'
@@ -40,15 +39,25 @@ const SFX_SOURCES: Record<SfxName, number> = {
   spellLeap: require('../../assets/sounds/spell_leap.wav'),
 };
 
-const MUSIC_SOURCES: Record<MusicTrackId, number> = {
-  taverne: require('../../assets/sounds/music_taverne.wav'),
-  epique: require('../../assets/sounds/music_epique.wav'),
-  mystique: require('../../assets/sounds/music_mystique.wav'),
-};
+/** Menu/lobby screens loop this single track. */
+const MENU_MUSIC_SOURCE = require('../../assets/music/menu.mp3');
+
+/**
+ * In-match music: starts on the "match start" track; if a game runs long enough for it to finish,
+ * the tavern tracks continue the playlist back-to-back, then the whole sequence loops.
+ */
+const MATCH_MUSIC_SOURCES = [
+  require('../../assets/music/match_start.mp3'),
+  require('../../assets/music/tavern_1.mp3'),
+  require('../../assets/music/tavern_2.mp3'),
+];
+
+export type MusicContext = 'menu' | 'match';
 
 let sfxPlayers: Partial<Record<SfxName, AudioPlayer>> | null = null;
-let musicPlayer: AudioPlayer | null = null;
-let currentMusicTrack: MusicTrackId | null = null;
+let menuPlayer: AudioPlayer | null = null;
+let matchPlaylist: AudioPlaylist | null = null;
+let activeMusicContext: MusicContext | null = null;
 let audioModeConfigured = false;
 
 function getSfxPlayers(): Partial<Record<SfxName, AudioPlayer>> {
@@ -63,6 +72,22 @@ function getSfxPlayers(): Partial<Record<SfxName, AudioPlayer>> {
     });
   }
   return sfxPlayers;
+}
+
+function getMenuPlayer(): AudioPlayer {
+  if (!menuPlayer) {
+    menuPlayer = createAudioPlayer(MENU_MUSIC_SOURCE);
+    menuPlayer.loop = true;
+  }
+  return menuPlayer;
+}
+
+function getMatchPlaylist(): AudioPlaylist {
+  if (!matchPlaylist) {
+    matchPlaylist = createAudioPlaylist({ sources: MATCH_MUSIC_SOURCES });
+    matchPlaylist.loop = 'all';
+  }
+  return matchPlaylist;
 }
 
 export async function initAudio(): Promise<void> {
@@ -87,51 +112,93 @@ export function playSfx(name: SfxName, enabled: boolean): void {
   }
 }
 
-function ensureMusicPlayer(track: MusicTrackId): AudioPlayer {
-  if (musicPlayer && currentMusicTrack === track) return musicPlayer;
-  musicPlayer?.release();
-  musicPlayer = createAudioPlayer(MUSIC_SOURCES[track]);
-  musicPlayer.loop = true;
-  musicPlayer.volume = 0.32;
-  currentMusicTrack = track;
-  return musicPlayer;
+/**
+ * Switches to (or resumes) the given music context. Switching context always restarts that
+ * context's music from its first track; re-selecting the already-active context just resyncs
+ * volume/enabled without interrupting playback.
+ */
+export function setMusicContext(context: MusicContext, enabled: boolean, volume: number): void {
+  if (activeMusicContext === context) {
+    if (context === 'menu') {
+      const player = getMenuPlayer();
+      player.volume = volume;
+      if (enabled) player.play();
+      else player.pause();
+    } else {
+      const playlist = getMatchPlaylist();
+      playlist.volume = volume;
+      if (enabled) playlist.play();
+      else playlist.pause();
+    }
+    return;
+  }
+
+  try {
+    menuPlayer?.pause();
+  } catch {
+    // ignore
+  }
+  try {
+    matchPlaylist?.pause();
+  } catch {
+    // ignore
+  }
+  activeMusicContext = context;
+
+  try {
+    if (context === 'menu') {
+      const player = getMenuPlayer();
+      player.volume = volume;
+      void player.seekTo(0);
+      if (enabled) player.play();
+    } else {
+      const playlist = getMatchPlaylist();
+      playlist.volume = volume;
+      playlist.skipTo(0);
+      if (enabled) playlist.play();
+    }
+  } catch (error) {
+    console.error('[audio] failed to start music context', context, error);
+  }
 }
 
-export function playMusic(enabled: boolean, track: MusicTrackId): void {
-  if (!enabled) return;
+/** Live volume update, applied to whichever context is currently active (and cached for later). */
+export function setMusicVolume(volume: number): void {
+  if (menuPlayer) menuPlayer.volume = volume;
+  if (matchPlaylist) matchPlaylist.volume = volume;
+}
+
+/** Mute/unmute without restarting or losing playback position. */
+export function setMusicEnabled(enabled: boolean): void {
   try {
-    const player = ensureMusicPlayer(track);
-    player.play();
+    if (activeMusicContext === 'menu') {
+      if (enabled) menuPlayer?.play();
+      else menuPlayer?.pause();
+    } else if (activeMusicContext === 'match') {
+      if (enabled) matchPlaylist?.play();
+      else matchPlaylist?.pause();
+    }
   } catch (error) {
-    console.error('[audio] failed to play music', error);
+    console.error('[audio] failed to toggle music', error);
   }
 }
 
 export function stopMusic(): void {
   try {
-    musicPlayer?.pause();
+    menuPlayer?.pause();
+    matchPlaylist?.pause();
+    activeMusicContext = null;
   } catch (error) {
     console.error('[audio] failed to stop music', error);
   }
 }
 
-export function setMusicEnabled(enabled: boolean, track: MusicTrackId): void {
-  if (enabled) playMusic(true, track);
-  else stopMusic();
-}
-
-/** Switches to a different track, preserving playback state (keeps playing if already playing). */
-export function setMusicTrack(track: MusicTrackId, enabled: boolean): void {
-  const wasPlaying = musicPlayer?.playing ?? false;
-  if (track === currentMusicTrack && musicPlayer) return;
-  const player = ensureMusicPlayer(track);
-  if (enabled && wasPlaying) player.play();
-}
-
 export function releaseAllAudio(): void {
-  Object.values(sfxPlayers ?? {}).forEach((player) => player?.release());
-  musicPlayer?.release();
+  Object.values(sfxPlayers ?? {}).forEach((player) => player?.remove());
+  menuPlayer?.remove();
+  matchPlaylist?.destroy();
   sfxPlayers = null;
-  musicPlayer = null;
-  currentMusicTrack = null;
+  menuPlayer = null;
+  matchPlaylist = null;
+  activeMusicContext = null;
 }

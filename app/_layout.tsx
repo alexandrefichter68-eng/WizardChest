@@ -1,12 +1,12 @@
 import '@/i18n';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { initAudio, setMusicEnabled } from '@/audio/sounds';
+import { initAudio, setMusicContext } from '@/audio/sounds';
 import { useHistoryStore } from '@/store/historyStore';
 import { useLeaderboardStore } from '@/store/leaderboardStore';
 import { useProfileStore } from '@/store/profileStore';
@@ -18,9 +18,10 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const { i18n } = useTranslation();
+  const pathname = usePathname();
   const language = useSettingsStore((s) => s.settings.language);
   const musicEnabled = useSettingsStore((s) => s.settings.musicEnabled);
-  const musicTrack = useSettingsStore((s) => s.settings.musicTrack);
+  const musicVolume = useSettingsStore((s) => s.settings.musicVolume);
 
   const profileHydrated = useProfileStore((s) => s.hasHydrated);
   const settingsHydrated = useSettingsStore((s) => s.hasHydrated);
@@ -45,8 +46,10 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    setMusicEnabled(musicEnabled, musicTrack);
-  }, [musicEnabled, musicTrack]);
+    // The match screen drives its own "match" playlist (start track, then tavern tracks in
+    // sequence for long games); every other screen loops the single menu track.
+    setMusicContext(pathname === '/game' ? 'match' : 'menu', musicEnabled, musicVolume);
+  }, [musicEnabled, musicVolume, pathname]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

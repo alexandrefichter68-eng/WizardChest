@@ -1,6 +1,6 @@
 import type { PieceSymbol } from 'chess.js';
 
-export type SpellId = 'explosion' | 'teleport' | 'shield' | 'leap';
+export type SpellId = 'explosion' | 'teleport' | 'shield' | 'leap' | 'celeste' | 'entrave' | 'resurrection' | 'corruption';
 
 export interface SpellDef {
   id: SpellId;
@@ -8,10 +8,12 @@ export interface SpellDef {
   descriptionKey: string;
   icon: string;
   cost: number;
-  /** How many allied squares the player must pick, in order, to fully cast this spell. */
+  /** How many squares the player must pick, in order, to fully cast this spell. */
   targetCount: 1 | 2;
 }
 
+// Note: the "explosion" id is kept internally for minimal churn, but it's displayed to players
+// as "Cataclysme" (see spell.explosionName in the locale files) — a pure naming/flavor change.
 export const SPELLS: SpellDef[] = [
   {
     id: 'explosion',
@@ -26,7 +28,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.teleportName',
     descriptionKey: 'spell.teleportDescription',
     icon: '🌀',
-    cost: 4,
+    cost: 5,
     targetCount: 2,
   },
   {
@@ -34,7 +36,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.shieldName',
     descriptionKey: 'spell.shieldDescription',
     icon: '🛡️',
-    cost: 6,
+    cost: 4,
     targetCount: 1,
   },
   {
@@ -43,6 +45,38 @@ export const SPELLS: SpellDef[] = [
     descriptionKey: 'spell.leapDescription',
     icon: '🐴',
     cost: 3,
+    targetCount: 1,
+  },
+  {
+    id: 'celeste',
+    nameKey: 'spell.celesteName',
+    descriptionKey: 'spell.celesteDescription',
+    icon: '✨',
+    cost: 4,
+    targetCount: 1,
+  },
+  {
+    id: 'entrave',
+    nameKey: 'spell.entraveName',
+    descriptionKey: 'spell.entraveDescription',
+    icon: '⛓️',
+    cost: 3,
+    targetCount: 1,
+  },
+  {
+    id: 'resurrection',
+    nameKey: 'spell.resurrectionName',
+    descriptionKey: 'spell.resurrectionDescription',
+    icon: '⚰️',
+    cost: 7,
+    targetCount: 1,
+  },
+  {
+    id: 'corruption',
+    nameKey: 'spell.corruptionName',
+    descriptionKey: 'spell.corruptionDescription',
+    icon: '🩸',
+    cost: 6,
     targetCount: 1,
   },
 ];
@@ -59,12 +93,18 @@ export const CAPTURE_GOLD_VALUE: Record<PieceSymbol, number> = {
   n: 3,
   b: 3,
   r: 5,
-  q: 9,
+  q: 7,
   k: 0,
 };
 
-/** Gold earned for delivering check (not checkmate) with a normal move. */
-export const CHECK_GOLD_REWARD = 5;
+/**
+ * Gold earned for delivering check (not checkmate) — scales with how many checks (real or
+ * "échec fantôme") that side has already delivered this match: the 1st is worth 1 gold, the 2nd
+ * worth 2, the 3rd worth 3, and so on. `checksDeliveredSoFar` is the count *before* this one.
+ */
+export function nextCheckGoldReward(checksDeliveredSoFar: number): number {
+  return checksDeliveredSoFar + 1;
+}
 
 export interface OwnedSpell {
   /** Unique per copy, since the player can own several of the same spell at once. */

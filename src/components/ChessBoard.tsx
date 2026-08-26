@@ -82,6 +82,8 @@ interface ChessBoardProps {
   legalTargets: Square[];
   lastMove: { from: Square; to: Square } | null;
   checkSquare: Square | null;
+  /** Squares about to be destroyed by Cataclysme — flashed in warning color before they vanish. */
+  dangerSquares?: Square[];
   interactive: boolean;
   onSquareTap: (square: Square) => void;
   onPieceDrop: (from: Square, to: Square) => void;
@@ -99,6 +101,7 @@ export function ChessBoard({
   legalTargets,
   lastMove,
   checkSquare,
+  dangerSquares,
   interactive,
   onSquareTap,
   onPieceDrop,
@@ -106,6 +109,7 @@ export function ChessBoard({
   const squareSize = size / 8;
   const pieces = useMemo(() => readPieces(fen), [fen]);
   const legalTargetsSet = useMemo(() => new Set(legalTargets), [legalTargets]);
+  const dangerSquaresSet = useMemo(() => new Set(dangerSquares ?? []), [dangerSquares]);
 
   const [draggedSquare, setDraggedSquare] = useState<Square | null>(null);
   const dragX = useSharedValue(0);
@@ -178,6 +182,7 @@ export function ChessBoard({
             const isLegalTarget = legalTargetsSet.has(square);
             const isLastMove = lastMove?.from === square || lastMove?.to === square;
             const isCheck = checkSquare === square;
+            const isDanger = dangerSquaresSet.has(square);
             const piece = pieces.find((p) => p.square === square);
             const isBeingDragged = draggedSquare === square;
 
@@ -198,6 +203,7 @@ export function ChessBoard({
                 {isLastMove && <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.highlightLastMove }]} />}
                 {isCheck && <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.highlightCheck }]} />}
                 {isSelected && <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.highlightSelected }]} />}
+                {isDanger && <View style={[StyleSheet.absoluteFill, styles.dangerOverlay]} />}
                 {isLegalTarget && !piece && (
                   <View style={styles.legalDotWrap}>
                     <View style={[styles.legalDot, { backgroundColor: palette.highlightLegal }]} />
@@ -286,6 +292,9 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderRadius: 999,
     margin: 4,
+  },
+  dangerOverlay: {
+    backgroundColor: 'rgba(255, 106, 43, 0.55)',
   },
   ghostPiece: {
     position: 'absolute',

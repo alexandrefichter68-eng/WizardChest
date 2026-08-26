@@ -124,12 +124,12 @@ export type BoardOrientation = 'white' | 'black' | 'auto';
 export type AnimationQuality = 'low' | 'medium' | 'high';
 
 export type AppLanguage = 'fr' | 'en';
-export type MusicTrackId = 'taverne' | 'epique' | 'mystique';
 
 export interface AppSettings {
   language: AppLanguage;
   musicEnabled: boolean;
-  musicTrack: MusicTrackId;
+  /** 0.0 (silent) to 1.0 (full volume) — adjustable from Settings, including mid-match. */
+  musicVolume: number;
   sfxEnabled: boolean;
   hapticsEnabled: boolean;
   animationQuality: AnimationQuality;

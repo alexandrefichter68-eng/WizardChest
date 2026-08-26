@@ -115,46 +115,6 @@ function sweepTone(freqStart, freqEnd, durationSec, { wave = 'sine', amplitude =
 }
 
 /** Equal-tempered frequency for a note `semitones` half-steps away from middle C (C4 ≈ 261.63Hz). */
-function noteFreq(semitones) {
-  return 261.6256 * Math.pow(2, semitones / 12);
-}
-
-/** Renders a monophonic sequence of `{ semitone, beats }` steps (semitone `null` = rest). */
-function renderSequence(steps, bpm, { wave = 'triangle', amplitude = 0.3, decay = 'linear', gapRatio = 0.08 } = {}) {
-  const secPerBeat = 60 / bpm;
-  const parts = [];
-  for (const step of steps) {
-    const totalDur = step.beats * secPerBeat;
-    if (step.semitone === null) {
-      parts.push(silence(totalDur));
-      continue;
-    }
-    const noteDur = totalDur * (1 - gapRatio);
-    parts.push(tone(noteFreq(step.semitone), noteDur, { wave, amplitude, decay, attack: 0.008 }));
-    parts.push(silence(totalDur - noteDur));
-  }
-  return concat(...parts);
-}
-
-/** A steady soft percussive pulse, one hit per beat, accented on beat 1 of each 4-beat bar. */
-function renderPulse(beatCount, bpm, { accentAmplitude = 0.14, amplitude = 0.07 } = {}) {
-  const secPerBeat = 60 / bpm;
-  const parts = [];
-  for (let i = 0; i < beatCount; i++) {
-    const burst = noiseBurst(0.035, i % 4 === 0 ? accentAmplitude : amplitude);
-    const padLength = Math.max(0, Math.round(secPerBeat * SAMPLE_RATE) - burst.length);
-    parts.push(concat(burst, new Array(padLength).fill(0)));
-  }
-  return concat(...parts);
-}
-
-function loopToLength(track, targetSamples) {
-  if (track.length >= targetSamples) return track.slice(0, targetSamples);
-  const out = new Array(targetSamples);
-  for (let i = 0; i < targetSamples; i++) out[i] = track[i % track.length];
-  return out;
-}
-
 console.log('Generating placeholder SFX into assets/sounds/ …');
 
 // A soft wooden "tock" for regular moves.
@@ -261,77 +221,6 @@ writeWavFile(
 // A playful "hop" pitch bounce for the Leap spell.
 writeWavFile('spell_leap.wav', sweepTone(440, 880, 0.1, { wave: 'triangle', amplitude: 0.32 }));
 
-// Music tracks ----------------------------------------------------------------------------------
-// Three selectable loops (see Paramètres → Musique). All synthesized, no external samples.
-
-// "Nuit mystique" — the original moody drone, kept as an optional darker choice, softened
-// slightly so it reads as atmospheric rather than outright unsettling.
-(function generateMysticTrack() {
-  const durationSec = 8;
-  const n = Math.round(SAMPLE_RATE * durationSec);
-  const out = new Array(n);
-  for (let i = 0; i < n; i++) {
-    const t = i / SAMPLE_RATE;
-    const fadeIn = Math.min(1, t / 0.6);
-    const fadeOut = Math.min(1, (durationSec - t) / 0.6);
-    const shimmer = 1 + 0.05 * Math.sin(2 * Math.PI * 0.12 * t);
-    const drone =
-      0.14 * Math.sin(2 * Math.PI * 98 * t) +
-      0.09 * Math.sin(2 * Math.PI * 146.8 * t * shimmer) +
-      0.05 * Math.sin(2 * Math.PI * 220 * t + Math.sin(t * 0.4));
-    out[i] = drone * fadeIn * fadeOut;
-  }
-  writeWavFile('music_mystique.wav', out);
-})();
-
-// "Taverne héroïque" — upbeat major-key oom-pah bass + a bouncy pentatonic melody, the new
-// default: a warm fantasy-tavern feel instead of a moody drone.
-(function generateTavernTrack() {
-  const bpm = 132;
-  const bassBarPattern = [-12, -5, -12, -5, -5, 2, -5, 2, -3, 4, -3, 4, -7, 0, -7, 0];
-  const bassSteps = [];
-  for (let repeat = 0; repeat < 2; repeat++) {
-    for (const semitone of bassBarPattern) bassSteps.push({ semitone, beats: 1 });
-  }
-  const bassTrack = renderSequence(bassSteps, bpm, { wave: 'triangle', amplitude: 0.26, decay: 'linear' });
-
-  const melodyRiff = [7, 9, 7, 4, 2, 4, 0, 2];
-  const melodySteps = [];
-  for (let bar = 0; bar < 8; bar++) {
-    for (const semitone of melodyRiff) melodySteps.push({ semitone: semitone + 12, beats: 0.5 });
-  }
-  const melodyTrack = renderSequence(melodySteps, bpm, { wave: 'triangle', amplitude: 0.15, decay: 'linear' });
-
-  const pulseTrack = renderPulse(bassBarPattern.length * 2, bpm, { accentAmplitude: 0.1, amplitude: 0.045 });
-
-  const track = mix(bassTrack, melodyTrack, pulseTrack);
-  const target = Math.round(SAMPLE_RATE * (60 / bpm) * bassBarPattern.length * 2);
-  writeWavFile('music_taverne.wav', loopToLength(track, target));
-})();
-
-// "Marche épique" — a bold minor-key march: square-wave brass stabs over a driving pulse.
-(function generateEpicTrack() {
-  const bpm = 104;
-  const stabBarPattern = [-3, -3, -3, 7, 4, 4, 4, -3, -3, -3, -3, 7, 4, 4, 4, 0];
-  const stabSteps = [];
-  for (let repeat = 0; repeat < 2; repeat++) {
-    for (const semitone of stabBarPattern) stabSteps.push({ semitone, beats: 1 });
-  }
-  const brassTrack = renderSequence(stabSteps, bpm, { wave: 'square', amplitude: 0.12, decay: 'exp' });
-
-  const subBassSteps = [];
-  for (let repeat = 0; repeat < 2; repeat++) {
-    for (let bar = 0; bar < 4; bar++) {
-      subBassSteps.push({ semitone: stabBarPattern[bar * 4], beats: 2 }, { semitone: null, beats: 2 });
-    }
-  }
-  const subBassTrack = renderSequence(subBassSteps, bpm, { wave: 'sine', amplitude: 0.32, decay: 'linear' });
-
-  const pulseTrack = renderPulse(stabBarPattern.length * 2, bpm, { accentAmplitude: 0.16, amplitude: 0.08 });
-
-  const track = mix(brassTrack, subBassTrack, pulseTrack);
-  const target = Math.round(SAMPLE_RATE * (60 / bpm) * stabBarPattern.length * 2);
-  writeWavFile('music_epique.wav', loopToLength(track, target));
-})();
+// Music is no longer generated here — real tracks live in assets/music/ (see src/audio/sounds.ts).
 
 console.log('Done.');

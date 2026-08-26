@@ -1,4 +1,5 @@
-import { Chess, type Color as ChessColor, type Square } from 'chess.js';
+import { Chess, type Square } from 'chess.js';
+import { assertSquareIsNotKing, isDestinationSafeForOwnKing } from '@/engine/boardUtils';
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
 
@@ -38,19 +39,11 @@ const SLIDING_DIRECTIONS: Record<'b' | 'r' | 'q', [number, number][]> = {
   ],
 };
 
-function findKingSquare(chess: Chess, color: ChessColor): Square | null {
-  for (const row of chess.board()) {
-    for (const cell of row) {
-      if (cell && cell.type === 'k' && cell.color === color) return cell.square;
-    }
-  }
-  return null;
-}
-
 /**
  * Raw destinations for the "Saut" (Leap) spell: same movement shape as the piece normally has,
  * but blocking pieces along the way are ignored (jumped over). The final square still has to
- * follow normal rules (empty, or an enemy piece to capture — never a friendly piece).
+ * follow normal rules (empty, or an enemy piece to capture — never a friendly piece, and never
+ * either king: magic can bend movement, never win the game by removing a king directly).
  */
 function rawLeapDestinations(chess: Chess, from: Square): Square[] {
   const piece = chess.get(from);
@@ -64,7 +57,7 @@ function rawLeapDestinations(chess: Chess, from: Square): Square[] {
         const sq = toSquare(f + df * dist, r + dr * dist);
         if (!sq) break;
         const occupant = chess.get(sq);
-        if (!occupant || occupant.color !== piece.color) destinations.push(sq);
+        if (!occupant || (occupant.color !== piece.color && occupant.type !== 'k')) destinations.push(sq);
         // Whether or not this square is occupied, keep scanning past it — that's the jump.
       }
     }
@@ -81,35 +74,27 @@ function rawLeapDestinations(chess: Chess, from: Square): Square[] {
       const diag = toSquare(f + df, r + dir);
       if (diag) {
         const occupant = chess.get(diag);
-        if (occupant && occupant.color !== piece.color) destinations.push(diag);
+        if (occupant && occupant.color !== piece.color && occupant.type !== 'k') destinations.push(diag);
       }
     }
   } else {
     // Knight/king movement is already unaffected by blocking pieces, so leap adds nothing —
-    // fall back to chess.js's own legal destinations for consistency.
-    return chess.moves({ square: from, verbose: true }).map((m) => m.to);
+    // fall back to chess.js's own legal destinations for consistency. Filtered defensively so a
+    // king square can never appear as a destination even in an anomalous ("échec fantôme")
+    // position where chess.js's own legality check might otherwise allow it.
+    return chess
+      .moves({ square: from, verbose: true })
+      .map((m) => m.to)
+      .filter((to) => chess.get(to)?.type !== 'k');
   }
 
   return destinations;
 }
 
-function isDestinationSafeForOwnKing(chess: Chess, from: Square, to: Square, color: ChessColor): boolean {
-  const probe = new Chess(chess.fen());
-  const movingPiece = probe.get(from);
-  if (!movingPiece) return false;
-  probe.remove(from);
-  probe.remove(to);
-  probe.put({ type: movingPiece.type, color: movingPiece.color }, to);
-  const kingSquare = findKingSquare(probe, color);
-  if (!kingSquare) return true;
-  const opponent: ChessColor = color === 'w' ? 'b' : 'w';
-  return !probe.isAttacked(kingSquare, opponent);
-}
-
 /**
  * Legal leap destinations for the piece at `from`: same shape, blocking pieces ignored, but
- * still forbidden to land on a friendly piece or to leave the mover's own king in check —
- * the leap spell bends the movement rule, never the "don't expose your own king" rule.
+ * still forbidden to land on a friendly piece, on either king, or to leave the mover's own king
+ * in check — the leap spell bends the movement rule, never the "don't expose your own king" rule.
  */
 export function getLeapDestinations(chess: Chess, from: Square): Square[] {
   const piece = chess.get(from);
@@ -129,6 +114,7 @@ export interface LeapMoveResult {
 export function applyLeapMove(chess: Chess, from: Square, to: Square, promotion?: 'q' | 'r' | 'b' | 'n'): LeapMoveResult {
   const piece = chess.get(from);
   if (!piece) throw new Error('applyLeapMove: no piece at origin square');
+  assertSquareIsNotKing(chess, to, 'leap');
   const capturedPiece = chess.get(to);
 
   chess.remove(from);

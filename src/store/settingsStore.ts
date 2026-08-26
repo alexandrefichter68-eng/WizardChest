@@ -7,7 +7,7 @@ import type { AppSettings } from '@/types';
 const DEFAULT_SETTINGS: AppSettings = {
   language: 'fr',
   musicEnabled: true,
-  musicTrack: 'taverne',
+  musicVolume: 0.32,
   sfxEnabled: true,
   hapticsEnabled: true,
   animationQuality: 'high',
@@ -37,7 +37,7 @@ export const useSettingsStore = create<SettingsState>()(
       name: STORAGE_KEYS.settings,
       storage: createJSONStorage(() => AsyncStorage),
       // Deep-merge `settings` specifically so a device that saved data before a new setting
-      // (e.g. musicTrack) existed still gets that field's default instead of `undefined`.
+      // (e.g. musicVolume) existed still gets that field's default instead of `undefined`.
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as Partial<SettingsState> | undefined),

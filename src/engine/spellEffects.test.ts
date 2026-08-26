@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js';
-import { applyExplosion, applyTeleport, getAdjacentSquares } from '@/engine/spellEffects';
+import { applyCorruption, applyExplosion, applyTeleport, getAdjacentSquares, getOrthogonalAdjacentSquares } from '@/engine/spellEffects';
 
 describe('spellEffects', () => {
   describe('getAdjacentSquares', () => {
@@ -58,6 +58,45 @@ describe('spellEffects', () => {
     it('throws if either square is empty', () => {
       const chess = new Chess('k7/8/8/8/8/8/4P3/R3K3 w - - 0 1');
       expect(() => applyTeleport(chess, 'a1', 'b1')).toThrow();
+    });
+
+    it('refuses to move a king via teleport, in either slot', () => {
+      const chess = new Chess('k7/8/8/8/8/8/4P3/R3K3 w - - 0 1');
+      expect(() => applyTeleport(chess, 'e1', 'a1')).toThrow();
+      expect(() => applyTeleport(chess, 'a1', 'e1')).toThrow();
+      // Nothing should have moved — the throw must happen before any mutation.
+      expect(chess.get('e1')).toEqual({ type: 'k', color: 'w' });
+      expect(chess.get('a1')).toEqual({ type: 'r', color: 'w' });
+    });
+  });
+
+  describe('getOrthogonalAdjacentSquares', () => {
+    it('returns only the 4 horizontal/vertical neighbours, never diagonals', () => {
+      expect(getOrthogonalAdjacentSquares('d4').sort()).toEqual(['c4', 'd3', 'd5', 'e4'].sort());
+    });
+  });
+
+  describe('applyCorruption', () => {
+    it('flips the targeted piece to the given color in place', () => {
+      const chess = new Chess('k7/8/8/8/3p4/8/8/4K3 w - - 0 1');
+      applyCorruption(chess, 'd4', 'w');
+      expect(chess.get('d4')).toEqual({ type: 'p', color: 'w' });
+    });
+
+    it('does not change whose turn it is', () => {
+      const chess = new Chess('k7/8/8/8/3p4/8/8/4K3 w - - 0 1');
+      applyCorruption(chess, 'd4', 'w');
+      expect(chess.turn()).toBe('w');
+    });
+
+    it('refuses to corrupt a king', () => {
+      const chess = new Chess('k7/8/8/8/8/8/8/4K3 w - - 0 1');
+      expect(() => applyCorruption(chess, 'a8', 'w')).toThrow();
+    });
+
+    it('throws if the target square is empty', () => {
+      const chess = new Chess('k7/8/8/8/8/8/8/4K3 w - - 0 1');
+      expect(() => applyCorruption(chess, 'd4', 'w')).toThrow();
     });
   });
 });

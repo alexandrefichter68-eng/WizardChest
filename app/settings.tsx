@@ -3,8 +3,10 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { setMusicVolume } from '@/audio/sounds';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
+import { VolumeControl } from '@/components/VolumeControl';
 import { TIME_CONTROL_LABELS } from '@/domain/timeControls';
 import { useHistoryStore } from '@/store/historyStore';
 import { useProfileStore } from '@/store/profileStore';
@@ -13,19 +15,12 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { palette } from '@/theme/colors';
 import { minTouchTarget, radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
-import type { AnimationQuality, AppLanguage, BoardOrientation, MusicTrackId, TimeControlPreset } from '@/types';
+import type { AnimationQuality, AppLanguage, BoardOrientation, TimeControlPreset } from '@/types';
 
 const LANGUAGES: { value: AppLanguage; label: string }[] = [
   { value: 'fr', label: 'Français' },
   { value: 'en', label: 'English' },
 ];
-
-const MUSIC_TRACKS: MusicTrackId[] = ['taverne', 'epique', 'mystique'];
-const MUSIC_TRACK_LABEL_KEYS: Record<MusicTrackId, string> = {
-  taverne: 'settings.musicTrackTaverne',
-  epique: 'settings.musicTrackEpique',
-  mystique: 'settings.musicTrackMystique',
-};
 
 const ANIMATION_QUALITIES: { value: AnimationQuality; labelKey: string }[] = [
   { value: 'low', labelKey: 'settings.animationLow' },
@@ -101,14 +96,16 @@ export default function SettingsScreen() {
           <Card style={styles.card}>
             <ToggleRow label={t('settings.music')} value={settings.musicEnabled} onChange={(v) => updateSettings({ musicEnabled: v })} />
             {settings.musicEnabled && (
-              <>
-                <Text style={[styles.rowLabel, { marginTop: spacing.xs }]}>{t('settings.musicTrack')}</Text>
-                <ChoiceRow
-                  options={MUSIC_TRACKS.map((track) => ({ value: track, label: t(MUSIC_TRACK_LABEL_KEYS[track]) }))}
-                  value={settings.musicTrack}
-                  onChange={(value) => updateSettings({ musicTrack: value as MusicTrackId })}
+              <View style={{ marginTop: spacing.xs }}>
+                <VolumeControl
+                  label={t('settings.musicVolume')}
+                  value={settings.musicVolume}
+                  onChange={(v) => {
+                    updateSettings({ musicVolume: v });
+                    setMusicVolume(v);
+                  }}
                 />
-              </>
+              </View>
             )}
             <ToggleRow label={t('settings.sfx')} value={settings.sfxEnabled} onChange={(v) => updateSettings({ sfxEnabled: v })} />
             <ToggleRow label={t('settings.haptics')} value={settings.hapticsEnabled} onChange={(v) => updateSettings({ hapticsEnabled: v })} last />
