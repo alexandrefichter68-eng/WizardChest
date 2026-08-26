@@ -990,47 +990,53 @@ export default function GameScreen() {
           />
 
           <View style={styles.center}>
-            <View style={styles.statusArea}>
-              {ghostCheckMessage && <Text style={styles.ghostCheckBanner}>{ghostCheckMessage}</Text>}
-              {derivedChess.inCheck() && !isGameOver && <Text style={styles.checkBanner}>{t('game.check')}</Text>}
-              {isAiThinking && (
-                <Text style={styles.statusText}>{t('game.opponentTurn', { name: opponent.username })}</Text>
-              )}
+            {/* Fixed to exactly the board's own size so `center`'s centering is driven purely by
+                the board — the status text and cancel button float above/below it (absolutely
+                positioned) instead of adding to the centered block's height, which used to push
+                the board down and leave uneven black space above vs. below it. */}
+            <View style={[styles.boardStage, { width: boardSize, height: boardSize }]}>
+              <View style={styles.statusArea}>
+                {ghostCheckMessage && <Text style={styles.ghostCheckBanner}>{ghostCheckMessage}</Text>}
+                {derivedChess.inCheck() && !isGameOver && <Text style={styles.checkBanner}>{t('game.check')}</Text>}
+                {isAiThinking && (
+                  <Text style={styles.statusText}>{t('game.opponentTurn', { name: opponent.username })}</Text>
+                )}
+                {armedSpell && (
+                  <Text style={styles.statusText}>
+                    {armedSpell === 'explosion' && t('spell.chooseTargetPawn')}
+                    {armedSpell === 'teleport' && (spellCastTargets.length === 0 ? t('spell.chooseFirstAlly') : t('spell.chooseSecondAlly'))}
+                    {(armedSpell === 'entrave' || armedSpell === 'corruption') && t('spell.chooseEnemyTarget')}
+                    {(armedSpell === 'shield' || armedSpell === 'leap' || armedSpell === 'celeste' || armedSpell === 'resurrection') &&
+                      t('spell.chooseAllyTarget')}
+                  </Text>
+                )}
+                {drawOfferMessage && <Text style={styles.statusText}>{drawOfferMessage}</Text>}
+              </View>
+
+              <View style={styles.boardWrap}>
+                <ChessBoard
+                  fen={fen}
+                  orientation={orientation}
+                  size={boardSize}
+                  boardTheme={boardTheme}
+                  pieceTheme={pieceTheme}
+                  selectedSquare={armedSpell ? (spellCastTargets[0] ?? null) : selectedSquare}
+                  legalTargets={armedSpell ? spellHighlightTargets : legalTargets}
+                  lastMove={lastMove}
+                  checkSquare={checkSquare}
+                  dangerSquares={explosionPreviewSquares}
+                  interactive={isPlayerTurn}
+                  onSquareTap={handleSquareTap}
+                  onPieceDrop={handlePieceDrop}
+                />
+              </View>
+
               {armedSpell && (
-                <Text style={styles.statusText}>
-                  {armedSpell === 'explosion' && t('spell.chooseTargetPawn')}
-                  {armedSpell === 'teleport' && (spellCastTargets.length === 0 ? t('spell.chooseFirstAlly') : t('spell.chooseSecondAlly'))}
-                  {(armedSpell === 'entrave' || armedSpell === 'corruption') && t('spell.chooseEnemyTarget')}
-                  {(armedSpell === 'shield' || armedSpell === 'leap' || armedSpell === 'celeste' || armedSpell === 'resurrection') &&
-                    t('spell.chooseAllyTarget')}
-                </Text>
+                <Pressable onPress={() => handleArmSpell(armedSpell)} style={styles.cancelSpellButton}>
+                  <Text style={styles.cancelSpellLabel}>✕ {t('spell.cancelCast')}</Text>
+                </Pressable>
               )}
-              {drawOfferMessage && <Text style={styles.statusText}>{drawOfferMessage}</Text>}
             </View>
-
-            <View style={styles.boardWrap}>
-              <ChessBoard
-                fen={fen}
-                orientation={orientation}
-                size={boardSize}
-                boardTheme={boardTheme}
-                pieceTheme={pieceTheme}
-                selectedSquare={armedSpell ? (spellCastTargets[0] ?? null) : selectedSquare}
-                legalTargets={armedSpell ? spellHighlightTargets : legalTargets}
-                lastMove={lastMove}
-                checkSquare={checkSquare}
-                dangerSquares={explosionPreviewSquares}
-                interactive={isPlayerTurn}
-                onSquareTap={handleSquareTap}
-                onPieceDrop={handlePieceDrop}
-              />
-            </View>
-
-            {armedSpell && (
-              <Pressable onPress={() => handleArmSpell(armedSpell)} style={styles.cancelSpellButton}>
-                <Text style={styles.cancelSpellLabel}>✕ {t('spell.cancelCast')}</Text>
-              </Pressable>
-            )}
           </View>
 
           <RightSpellPanel
@@ -1172,12 +1178,22 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+  },
+  // Sized to exactly the board — everything inside floats above/below via absolute positioning
+  // instead of adding to `center`'s centered block, which used to push the board off true
+  // center (more black space on one side than the other).
+  boardStage: {
+    position: 'relative',
   },
   // Fixed height reserved above the board regardless of which status text (if any) is showing,
   // so the check/turn/spell-prompt messages appearing and disappearing never nudge the board's
   // position — that reflow was the board "shaking" every time the turn passed between players.
   statusArea: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    marginBottom: spacing.sm,
     minHeight: 56,
     alignItems: 'center',
     justifyContent: 'flex-end',
@@ -1208,7 +1224,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   cancelSpellButton: {
-    alignSelf: 'center',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '100%',
+    marginTop: spacing.sm,
+    alignItems: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xxs,
   },
