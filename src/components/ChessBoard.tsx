@@ -30,11 +30,7 @@ const PIECE_GLYPHS: Record<PieceSymbol, string> = {
  */
 function getPieceGlowColor(pieceColor: 'w' | 'b', themeGlow: string): string {
   if (themeGlow !== 'transparent') return themeGlow;
-  return pieceColor === 'w' ? 'rgba(11,10,20,0.55)' : 'rgba(246,241,228,0.45)';
-}
-
-function getPieceGlowRadius(themeGlow: string, base: number): number {
-  return themeGlow !== 'transparent' ? base : Math.max(3, base - 3);
+  return pieceColor === 'w' ? 'rgba(11,10,20,0.6)' : 'rgba(246,241,228,0.65)';
 }
 
 interface BoardPiece {
@@ -220,7 +216,7 @@ export function ChessBoard({
                         fontSize: squareSize * 0.72,
                         color: piece.color === 'w' ? pieceTheme.whiteColor : pieceTheme.blackColor,
                         textShadowColor: getPieceGlowColor(piece.color, pieceTheme.glow),
-                        textShadowRadius: getPieceGlowRadius(pieceTheme.glow, 8),
+                        textShadowRadius: 8,
                         textShadowOffset: { width: 0, height: 0 },
                       },
                     ]}
@@ -249,7 +245,7 @@ export function ChessBoard({
                   fontSize: squareSize * 0.8,
                   color: draggedPiece.color === 'w' ? pieceTheme.whiteColor : pieceTheme.blackColor,
                   textShadowColor: getPieceGlowColor(draggedPiece.color, pieceTheme.glow),
-                  textShadowRadius: getPieceGlowRadius(pieceTheme.glow, 10),
+                  textShadowRadius: 10,
                   textShadowOffset: { width: 0, height: 0 },
                 },
               ]}

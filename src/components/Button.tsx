@@ -44,7 +44,7 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading,
           colors={[palette.goldBright, palette.gold]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.base}
+          style={[styles.base, styles.primaryGlow]}
         >
           {loading ? (
             <ActivityIndicator color={palette.voidBlack} />
@@ -100,6 +100,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+  },
+  primaryGlow: {
+    shadowColor: palette.gold,
+    shadowOpacity: 0.55,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   secondary: {
     backgroundColor: palette.stonePanelRaised,

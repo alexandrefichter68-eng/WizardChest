@@ -2,7 +2,7 @@ import { Chess, type Move, type PieceSymbol, type Square } from 'chess.js';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { setMusicVolume } from '@/audio/sounds';
 import { Avatar } from '@/components/Avatar';
@@ -12,13 +12,12 @@ import { GameOverPanel } from '@/components/GameOverPanel';
 import { LeftGamePanel, type ChatEntry } from '@/components/LeftGamePanel';
 import { PromotionModal } from '@/components/PromotionModal';
 import { RightSpellPanel } from '@/components/RightSpellPanel';
-import { ZoomableBoard } from '@/components/ZoomableBoard';
 import { computeAiMove } from '@/engine/aiPlayer';
 import { findKingSquare, isEnemyKingAttacked } from '@/engine/boardUtils';
 import { applyCelesteMove, getCelesteDestinations } from '@/engine/celesteMoves';
 import { evaluatePosition } from '@/engine/evaluation';
 import { applyLeapMove, getLeapDestinations } from '@/engine/leapMoves';
-import { applyCorruption, applyExplosion, applyTeleport, getBlastSquares, getOrthogonalAdjacentSquares } from '@/engine/spellEffects';
+import { applyCorruption, applyExplosion, applyTeleport, getBlastSquares, getOrthogonalAdjacentSquares, promoteEdgePawns } from '@/engine/spellEffects';
 import { evaluateAchievements } from '@/domain/achievementRules';
 import { getBoardTheme, getPieceTheme } from '@/domain/cosmetics';
 import { getDivisionById } from '@/domain/divisions';
@@ -79,6 +78,11 @@ export default function GameScreen() {
   const checksDeliveredRef = useRef(0);
   const aiChecksDeliveredRef = useRef(0);
   const deadAllyPiecesRef = useRef<PieceSymbol[]>([]);
+  // Spells that mutate the board directly (chess.put/remove for Cataclysme, Téléportation,
+  // Corruption, Résurrection) desync chess.js's own undo/redo stack from the live board, which
+  // makes chess.history()/chess.pgn() crash at game end (both replay the whole game backward then
+  // forward to rebuild it). We track moves ourselves instead of ever relying on chess.history().
+  const moveLogRef = useRef<{ moverColor: PieceColor; piece: PieceSymbol; isPromotion: boolean }[]>([]);
 
   const [fen, setFen] = useState(() => new Chess().fen());
   const derivedChess = useMemo(() => new Chess(fen), [fen]);
@@ -206,12 +210,22 @@ export default function GameScreen() {
       setSpellCastTargets([]);
 
       const chess = chessRef.current;
-      const moveHistory = chess.history({ verbose: true });
+      // Never call chess.history()/chess.pgn() here without a fallback: any spell that mutated the
+      // board directly (Cataclysme, Téléportation, Corruption, Résurrection) desyncs chess.js's own
+      // undo/redo stack from the live board, and both of those replay the whole game backward then
+      // forward to rebuild themselves — so we read move info from our own tracked log instead.
+      const moveHistory = moveLogRef.current;
       const moveCount = moveHistory.length;
-      const didPromotePawn = moveHistory.some((m) => m.promotion);
+      const didPromotePawn = moveHistory.some((m) => m.isPromotion);
       const lastMoveEntry = moveHistory[moveHistory.length - 1];
       const checkmateDeliveredByKnight =
-        result === 'win' && endReason === 'checkmate' && lastMoveEntry?.piece === 'n' && lastMoveEntry.color === resolvedPlayerColor;
+        result === 'win' && endReason === 'checkmate' && lastMoveEntry?.piece === 'n' && lastMoveEntry.moverColor === resolvedPlayerColor;
+      let pgn = '';
+      try {
+        pgn = chess.pgn();
+      } catch {
+        // See the comment above — falls back to no PGN rather than crashing the game-over flow.
+      }
 
       const xp = computeXpGain({
         result,
@@ -257,7 +271,7 @@ export default function GameScreen() {
         eloBefore: outcome.eloBefore,
         eloAfter: outcome.eloAfter,
         xpGained: xp.total,
-        pgn: chess.pgn(),
+        pgn,
         finalFen: chess.fen(),
         moveCount,
       });
@@ -273,7 +287,7 @@ export default function GameScreen() {
         divisionChanged: outcome.divisionChanged,
         leveledUp: outcome.leveledUp,
         newAchievements,
-        pgn: chess.pgn(),
+        pgn,
         finalFen: chess.fen(),
         moveCount,
         durationMs,
@@ -323,8 +337,9 @@ export default function GameScreen() {
 
   /** Shared bookkeeping after ANY move completes (normal chess.js move or a leap/céleste). */
   const finishMoveEffects = useCallback(
-    (params: { moverColor: PieceColor; from: Square; to: Square; capturedType: PieceSymbol | null; isPromotion: boolean }) => {
+    (params: { moverColor: PieceColor; piece: PieceSymbol; from: Square; to: Square; capturedType: PieceSymbol | null; isPromotion: boolean }) => {
       const chess = chessRef.current;
+      moveLogRef.current.push({ moverColor: params.moverColor, piece: params.piece, isPromotion: params.isPromotion });
       const increment = (timeControl?.incrementSeconds ?? 0) * 1000;
       if (params.moverColor === 'w') setWhiteMs((ms) => ms + increment);
       else setBlackMs((ms) => ms + increment);
@@ -381,6 +396,7 @@ export default function GameScreen() {
             const revivedType = graveyard[idx]!;
             graveyard.splice(idx, 1);
             chess.put({ type: revivedType, color: resolvedPlayerColor }, params.from);
+            promoteEdgePawns(chess, [params.from]);
             setFen(chess.fen());
           }
         }
@@ -470,6 +486,7 @@ export default function GameScreen() {
 
       finishMoveEffects({
         moverColor: result.color as PieceColor,
+        piece: result.piece as PieceSymbol,
         from: result.from,
         to: result.to,
         capturedType: (result.captured as PieceSymbol | undefined) ?? null,
@@ -484,10 +501,12 @@ export default function GameScreen() {
     (from: Square, to: Square, promotion?: PieceSymbol) => {
       const chess = chessRef.current;
       const promo = promotion && promotion !== 'p' && promotion !== 'k' ? (promotion as 'q' | 'r' | 'b' | 'n') : undefined;
+      const movedPiece = chess.get(from)?.type ?? 'p';
       const capturedBefore = chess.get(to);
       const { captured } = applyLeapMove(chess, from, to, promo);
       finishMoveEffects({
         moverColor: resolvedPlayerColor,
+        piece: promo ?? movedPiece,
         from,
         to,
         capturedType: captured && capturedBefore ? capturedBefore.type : null,
@@ -500,8 +519,9 @@ export default function GameScreen() {
   const applyCelesteMoveAndAdvance = useCallback(
     (from: Square, to: Square) => {
       const chess = chessRef.current;
+      const movedPiece = chess.get(from)?.type ?? 'q';
       applyCelesteMove(chess, from, to);
-      finishMoveEffects({ moverColor: resolvedPlayerColor, from, to, capturedType: null, isPromotion: false });
+      finishMoveEffects({ moverColor: resolvedPlayerColor, piece: movedPiece, from, to, capturedType: null, isPromotion: false });
     },
     [finishMoveEffects, resolvedPlayerColor],
   );
@@ -856,14 +876,19 @@ export default function GameScreen() {
     router.replace('/result');
   };
 
-  const windowWidth = Dimensions.get('window').width;
-  const sidePanelWidth = windowWidth < 500 ? 84 : 116;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isCompact = windowWidth < 500;
+  // Scales with the viewport instead of a fixed pixel cap, so the shop/chat panels stay readable
+  // on wide desktop/web windows instead of being stuck at the size tuned for a narrow phone.
+  const sidePanelWidth = isCompact
+    ? Math.round(Math.min(120, Math.max(84, windowWidth * 0.22)))
+    : Math.round(Math.min(300, Math.max(170, windowWidth * 0.19)));
   const boardSize = useMemo(() => {
     const rowGap = spacing.xs * 2;
-    const available = windowWidth - spacing.md * 2 - sidePanelWidth * 2 - rowGap;
-    return Math.max(140, Math.min(available, 420));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const availableWidth = windowWidth - spacing.md * 2 - sidePanelWidth * 2 - rowGap;
+    const availableHeight = windowHeight * 0.68;
+    return Math.max(140, Math.min(availableWidth, availableHeight, 760));
+  }, [windowWidth, windowHeight, sidePanelWidth]);
 
   if (!opponent) return null;
 
@@ -908,23 +933,25 @@ export default function GameScreen() {
           />
 
           <View style={styles.center}>
-            {ghostCheckMessage && <Text style={styles.ghostCheckBanner}>{ghostCheckMessage}</Text>}
-            {derivedChess.inCheck() && !isGameOver && <Text style={styles.checkBanner}>{t('game.check')}</Text>}
-            {isAiThinking && (
-              <Text style={styles.statusText}>{t('game.opponentTurn', { name: opponent.username })}</Text>
-            )}
-            {armedSpell && (
-              <Text style={styles.statusText}>
-                {armedSpell === 'explosion' && t('spell.chooseTargetPawn')}
-                {armedSpell === 'teleport' && (spellCastTargets.length === 0 ? t('spell.chooseFirstAlly') : t('spell.chooseSecondAlly'))}
-                {(armedSpell === 'entrave' || armedSpell === 'corruption') && t('spell.chooseEnemyTarget')}
-                {(armedSpell === 'shield' || armedSpell === 'leap' || armedSpell === 'celeste' || armedSpell === 'resurrection') &&
-                  t('spell.chooseAllyTarget')}
-              </Text>
-            )}
-            {drawOfferMessage && <Text style={styles.statusText}>{drawOfferMessage}</Text>}
+            <View style={styles.statusArea}>
+              {ghostCheckMessage && <Text style={styles.ghostCheckBanner}>{ghostCheckMessage}</Text>}
+              {derivedChess.inCheck() && !isGameOver && <Text style={styles.checkBanner}>{t('game.check')}</Text>}
+              {isAiThinking && (
+                <Text style={styles.statusText}>{t('game.opponentTurn', { name: opponent.username })}</Text>
+              )}
+              {armedSpell && (
+                <Text style={styles.statusText}>
+                  {armedSpell === 'explosion' && t('spell.chooseTargetPawn')}
+                  {armedSpell === 'teleport' && (spellCastTargets.length === 0 ? t('spell.chooseFirstAlly') : t('spell.chooseSecondAlly'))}
+                  {(armedSpell === 'entrave' || armedSpell === 'corruption') && t('spell.chooseEnemyTarget')}
+                  {(armedSpell === 'shield' || armedSpell === 'leap' || armedSpell === 'celeste' || armedSpell === 'resurrection') &&
+                    t('spell.chooseAllyTarget')}
+                </Text>
+              )}
+              {drawOfferMessage && <Text style={styles.statusText}>{drawOfferMessage}</Text>}
+            </View>
 
-            <ZoomableBoard size={boardSize}>
+            <View style={styles.boardWrap}>
               <ChessBoard
                 fen={fen}
                 orientation={orientation}
@@ -940,7 +967,7 @@ export default function GameScreen() {
                 onSquareTap={handleSquareTap}
                 onPieceDrop={handlePieceDrop}
               />
-            </ZoomableBoard>
+            </View>
 
             {armedSpell && (
               <Pressable onPress={() => handleArmSpell(armedSpell)} style={styles.cancelSpellButton}>
@@ -1090,6 +1117,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
+  // Fixed height reserved above the board regardless of which status text (if any) is showing,
+  // so the check/turn/spell-prompt messages appearing and disappearing never nudge the board's
+  // position — that reflow was the board "shaking" every time the turn passed between players.
+  statusArea: {
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  boardWrap: {
+    borderRadius: 6,
+    backgroundColor: palette.voidBlack,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
   checkBanner: {
     color: palette.danger,
     fontFamily: fontFamily.display,
@@ -1125,6 +1170,11 @@ const styles = StyleSheet.create({
     borderColor: palette.stoneBorder,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   playerInfo: {
     flexDirection: 'row',

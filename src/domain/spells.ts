@@ -20,7 +20,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.explosionName',
     descriptionKey: 'spell.explosionDescription',
     icon: '💥',
-    cost: 2,
+    cost: 3,
     targetCount: 1,
   },
   {
@@ -28,7 +28,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.teleportName',
     descriptionKey: 'spell.teleportDescription',
     icon: '🌀',
-    cost: 5,
+    cost: 7,
     targetCount: 2,
   },
   {
@@ -36,7 +36,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.shieldName',
     descriptionKey: 'spell.shieldDescription',
     icon: '🛡️',
-    cost: 4,
+    cost: 6,
     targetCount: 1,
   },
   {
@@ -44,7 +44,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.leapName',
     descriptionKey: 'spell.leapDescription',
     icon: '🐴',
-    cost: 3,
+    cost: 5,
     targetCount: 1,
   },
   {
@@ -52,7 +52,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.celesteName',
     descriptionKey: 'spell.celesteDescription',
     icon: '✨',
-    cost: 4,
+    cost: 6,
     targetCount: 1,
   },
   {
@@ -60,7 +60,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.entraveName',
     descriptionKey: 'spell.entraveDescription',
     icon: '⛓️',
-    cost: 3,
+    cost: 5,
     targetCount: 1,
   },
   {
@@ -68,7 +68,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.resurrectionName',
     descriptionKey: 'spell.resurrectionDescription',
     icon: '⚰️',
-    cost: 7,
+    cost: 9,
     targetCount: 1,
   },
   {
@@ -76,7 +76,7 @@ export const SPELLS: SpellDef[] = [
     nameKey: 'spell.corruptionName',
     descriptionKey: 'spell.corruptionDescription',
     icon: '🩸',
-    cost: 6,
+    cost: 8,
     targetCount: 1,
   },
 ];

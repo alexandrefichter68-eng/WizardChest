@@ -19,28 +19,28 @@ export const BOARD_THEMES: BoardThemeDef[] = [
   {
     id: 'pierre_ivoire',
     nameKey: 'cosmetic.board.pierre_ivoire',
-    darkSquare: '#2B2440',
+    darkSquare: '#3D3560',
     lightSquare: '#D9CBB0',
     requiredDivisionOrder: 0,
   },
   {
     id: 'obsidienne_or',
     nameKey: 'cosmetic.board.obsidienne_or',
-    darkSquare: '#1A1626',
+    darkSquare: '#2C2640',
     lightSquare: '#E8C15C',
     requiredDivisionOrder: 3,
   },
   {
     id: 'marbre_arcane',
     nameKey: 'cosmetic.board.marbre_arcane',
-    darkSquare: '#241F3D',
+    darkSquare: '#352D54',
     lightSquare: '#7FE6FA',
     requiredDivisionOrder: 5,
   },
   {
     id: 'flamme_sorciere',
     nameKey: 'cosmetic.board.flamme_sorciere',
-    darkSquare: '#2A1220',
+    darkSquare: '#3B1D31',
     lightSquare: '#FF8B6B',
     requiredDivisionOrder: 8,
   },
@@ -51,9 +51,9 @@ export const PIECE_THEMES: PieceThemeDef[] = [
     id: 'classique',
     nameKey: 'cosmetic.piece.classique',
     whiteColor: '#F6F1E4',
-    // Deliberately far from `pierre_ivoire.darkSquare` (#2B2440) so black pieces never blend
+    // Deliberately far from `pierre_ivoire.darkSquare` (#3D3560) so black pieces never blend
     // into dark squares — see ChessBoard's contrast glow for the rest of the fix.
-    blackColor: '#0A0710',
+    blackColor: '#1E1A30',
     glow: 'transparent',
     requiredDivisionOrder: 0,
   },

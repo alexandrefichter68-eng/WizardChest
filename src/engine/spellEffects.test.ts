@@ -1,5 +1,12 @@
 import { Chess } from 'chess.js';
-import { applyCorruption, applyExplosion, applyTeleport, getAdjacentSquares, getOrthogonalAdjacentSquares } from '@/engine/spellEffects';
+import {
+  applyCorruption,
+  applyExplosion,
+  applyTeleport,
+  getAdjacentSquares,
+  getOrthogonalAdjacentSquares,
+  promoteEdgePawns,
+} from '@/engine/spellEffects';
 
 describe('spellEffects', () => {
   describe('getAdjacentSquares', () => {
@@ -43,10 +50,19 @@ describe('spellEffects', () => {
 
   describe('applyTeleport', () => {
     it('swaps two pieces\' positions', () => {
-      const chess = new Chess('k7/8/8/8/8/8/4P3/R3K3 w - - 0 1');
-      applyTeleport(chess, 'a1', 'e2');
-      expect(chess.get('a1')).toEqual({ type: 'p', color: 'w' });
+      const chess = new Chess('k7/8/8/8/8/R7/4P3/4K3 w - - 0 1');
+      applyTeleport(chess, 'a3', 'e2');
+      expect(chess.get('a3')).toEqual({ type: 'p', color: 'w' });
       expect(chess.get('e2')).toEqual({ type: 'r', color: 'w' });
+    });
+
+    it('auto-promotes to a queen when a pawn lands on the back rank (e.g. swapped with a rook sitting there)', () => {
+      const chess = new Chess('k3R3/8/8/8/8/8/4P3/4K3 w - - 0 1');
+      applyTeleport(chess, 'e2', 'e8');
+      expect(chess.get('e8')).toEqual({ type: 'q', color: 'w' });
+      expect(chess.get('e2')).toEqual({ type: 'r', color: 'w' });
+      // The whole point of the fix: chess.js must still accept this position afterward.
+      expect(() => new Chess(chess.fen())).not.toThrow();
     });
 
     it('does not change whose turn it is', () => {
@@ -67,6 +83,26 @@ describe('spellEffects', () => {
       // Nothing should have moved — the throw must happen before any mutation.
       expect(chess.get('e1')).toEqual({ type: 'k', color: 'w' });
       expect(chess.get('a1')).toEqual({ type: 'r', color: 'w' });
+    });
+  });
+
+  describe('promoteEdgePawns', () => {
+    it('turns a pawn sitting on rank 1 or 8 into a queen of the same color', () => {
+      // A pawn can never legally sit on rank 1/8 — chess.js's own FEN parser rejects it, so the
+      // only way to get one there for this test is the same way a spell does: chess.put() directly.
+      const chess = new Chess('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+      chess.put({ type: 'p', color: 'w' }, 'a8');
+      chess.put({ type: 'p', color: 'b' }, 'a1');
+      promoteEdgePawns(chess, ['a8', 'a1']);
+      expect(chess.get('a8')).toEqual({ type: 'q', color: 'w' });
+      expect(chess.get('a1')).toEqual({ type: 'q', color: 'b' });
+    });
+
+    it('leaves non-pawn pieces and pawns off the edge rows untouched', () => {
+      const chess = new Chess('4k3/8/8/4P3/8/8/8/4K3 w - - 0 1');
+      promoteEdgePawns(chess, ['e8', 'e5']);
+      expect(chess.get('e8')).toEqual({ type: 'k', color: 'b' });
+      expect(chess.get('e5')).toEqual({ type: 'p', color: 'w' });
     });
   });
 

@@ -71,6 +71,22 @@ export function applyExplosion(chess: Chess, targetSquare: Square): ExplosionRes
   return { destroyedSquares };
 }
 
+/**
+ * Auto-promotes to a queen any pawn left sitting on the back rank (rank 1 or 8) — spells that
+ * place a piece directly on the board (Téléportation, Résurrection) bypass chess.js's own
+ * promotion handling entirely, and a raw pawn on the edge rows makes the position's FEN invalid
+ * (chess.js refuses to re-parse it, crashing the very next read of `chess.fen()`).
+ */
+export function promoteEdgePawns(chess: Chess, squares: Square[]): void {
+  for (const square of squares) {
+    const piece = chess.get(square);
+    if (piece && piece.type === 'p' && (square[1] === '1' || square[1] === '8')) {
+      chess.remove(square);
+      chess.put({ type: 'q', color: piece.color }, square);
+    }
+  }
+}
+
 /** Swaps two allied pieces' positions directly on the board. Neither square may hold a king. */
 export function applyTeleport(chess: Chess, squareA: Square, squareB: Square): void {
   assertSquareIsNotKing(chess, squareA, 'teleport');
@@ -82,6 +98,7 @@ export function applyTeleport(chess: Chess, squareA: Square, squareB: Square): v
   chess.remove(squareB);
   chess.put({ type: pieceA.type, color: pieceA.color }, squareB);
   chess.put({ type: pieceB.type, color: pieceB.color }, squareA);
+  promoteEdgePawns(chess, [squareA, squareB]);
 }
 
 /**

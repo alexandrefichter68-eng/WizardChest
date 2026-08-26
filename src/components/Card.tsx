@@ -18,5 +18,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.stoneBorder,
     padding: spacing.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
 });
