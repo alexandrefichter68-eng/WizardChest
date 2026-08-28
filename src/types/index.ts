@@ -46,12 +46,27 @@ export interface OpponentProfile {
   /** AI search parameters derived from elo/style, kept for transparency/debugging. */
   aiDepth: number;
   aiSkillNoise: number;
+  /** false only for spell-less adventure bosses (e.g. Edgar) — absent/true for every generated opponent. */
+  usesSpells?: boolean;
+  /** True only for the Entraînement (training) bot — every spell purchase costs no gold, still capped by MAX_OWNED_SPELLS. */
+  freeSpells?: boolean;
+  /** Restricts the in-match spell shop to only these spell ids — absent/undefined shows every spell. */
+  availableSpellIds?: string[];
+  /**
+   * Adventure-mode "tutorial" bosses (e.g. Gartin) play these exact moves first, ignoring the
+   * search engine entirely, before switching to full-strength play. `from`/`to` are chess.js
+   * `Square` values (kept as plain strings here so this foundational type doesn't need to import
+   * from the domain layer).
+   */
+  scriptedOpeningMoves?: { from: string; to: string }[];
 }
 
 export interface PlayerProfile {
   id: string;
   username: string;
   avatar: AvatarSpec;
+  /** Data URI of a user-imported profile photo. Absent/undefined falls back to the generated `avatar`. */
+  photoUri?: string;
   countryCode: string;
   elo: number;
   division: DivisionId;

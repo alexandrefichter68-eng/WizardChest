@@ -49,7 +49,13 @@
           "backgroundColor": "#0B0A14"
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Wizard Chest a besoin d'accéder à vos photos pour définir votre photo de profil."
+        }
+      ]
     ],
     "extra": {
       "router": {},

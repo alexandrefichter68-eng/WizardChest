@@ -57,6 +57,7 @@ interface ProfileState {
   hasHydrated: boolean;
   setHasHydrated: (value: boolean) => void;
   setUsername: (username: string) => void;
+  setProfilePhoto: (photoUri: string | null) => void;
   setCountryCode: (countryCode: string) => void;
   applyGameResult: (params: ApplyGameResultParams) => ApplyGameResultOutcome;
   claimDailyReward: () => { xpGained: number; streak: number } | null;
@@ -95,6 +96,12 @@ export const useProfileStore = create<ProfileState>()(
         if (!trimmed) return;
         set((state) => ({
           profile: { ...state.profile, username: trimmed, avatar: createAvatarForUsername(trimmed) },
+        }));
+      },
+
+      setProfilePhoto: (photoUri) => {
+        set((state) => ({
+          profile: { ...state.profile, photoUri: photoUri ?? undefined },
         }));
       },
 

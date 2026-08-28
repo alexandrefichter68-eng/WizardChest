@@ -1,7 +1,33 @@
 import { Chess } from 'chess.js';
-import { assertSquareIsNotKing, findKingSquare, isEnemyKingAttacked } from '@/engine/boardUtils';
+import { assertSquareIsNotKing, findKingSquare, getMissingPieces, isEnemyKingAttacked } from '@/engine/boardUtils';
 
 describe('boardUtils', () => {
+  describe('getMissingPieces', () => {
+    it('reports nothing missing from the starting position', () => {
+      const chess = new Chess();
+      expect(getMissingPieces(chess, 'w')).toEqual([]);
+      expect(getMissingPieces(chess, 'b')).toEqual([]);
+    });
+
+    it('reports exactly the captured pieces after a few captures', () => {
+      // White has lost a knight and two pawns; black has lost a bishop.
+      const chess = new Chess('rnbqkbnr/pp1ppppp/8/2p5/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+      // Manually strip pieces to simulate captures rather than playing them out.
+      chess.remove('b1'); // white knight gone
+      chess.remove('a2'); // white pawn gone
+      chess.remove('b2'); // white pawn gone
+      chess.remove('c8'); // black bishop gone
+      expect(getMissingPieces(chess, 'w').sort()).toEqual(['n', 'p', 'p'].sort());
+      expect(getMissingPieces(chess, 'b')).toEqual(['b']);
+    });
+
+    it('never reports the king as missing (kings are excluded entirely)', () => {
+      const chess = new Chess('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+      expect(getMissingPieces(chess, 'w')).not.toContain('k');
+      expect(getMissingPieces(chess, 'b')).not.toContain('k');
+    });
+  });
+
   describe('findKingSquare', () => {
     it('finds each side\'s king', () => {
       const chess = new Chess();

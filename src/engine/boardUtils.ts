@@ -1,4 +1,32 @@
-import { Chess, type Color as ChessColor, type Square } from 'chess.js';
+import { Chess, type Color as ChessColor, type PieceSymbol, type Square } from 'chess.js';
+
+/** A standard chess set's starting composition per side, excluding the king. */
+const STANDARD_COUNTS: Record<Exclude<PieceSymbol, 'k'>, number> = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+
+/**
+ * Which of `color`'s own piece types are currently missing compared to a standard starting set —
+ * i.e. what the opponent has captured (shown near the *opponent's* bar, chess.com-style).
+ * Computed fresh from the live board rather than kept as a running log: this game's spells
+ * (Cataclysme, Prix du Sang, Corruption, Résurrection…) remove, add, and recolor pieces through
+ * several different code paths, and a diff against the current position is naturally correct
+ * regardless of which path a piece disappeared through — no separate tracking to keep in sync.
+ * Promotion/résurrection/corruption can shift the exact numbers (e.g. a promoted queen isn't
+ * "captured" even though a pawn is now missing) — an accepted approximation, same trade-off
+ * chess.com itself makes with promotions.
+ */
+export function getMissingPieces(chess: Chess, color: ChessColor): PieceSymbol[] {
+  const counts: Record<Exclude<PieceSymbol, 'k'>, number> = { p: 0, n: 0, b: 0, r: 0, q: 0 };
+  for (const row of chess.board()) {
+    for (const cell of row) {
+      if (cell && cell.color === color && cell.type !== 'k') counts[cell.type] += 1;
+    }
+  }
+  const missing: PieceSymbol[] = [];
+  (Object.keys(STANDARD_COUNTS) as Exclude<PieceSymbol, 'k'>[]).forEach((type) => {
+    for (let i = 0; i < STANDARD_COUNTS[type] - counts[type]; i++) missing.push(type);
+  });
+  return missing;
+}
 
 export function findKingSquare(chess: Chess, color: ChessColor): Square | null {
   for (const row of chess.board()) {

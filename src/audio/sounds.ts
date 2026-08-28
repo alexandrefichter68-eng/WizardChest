@@ -1,4 +1,12 @@
-import { createAudioPlayer, createAudioPlaylist, setAudioModeAsync, type AudioPlayer, type AudioPlaylist } from 'expo-audio';
+import {
+  createAudioPlayer,
+  createAudioPlaylist,
+  setAudioModeAsync,
+  useAudioPlaylistStatus,
+  type AudioPlayer,
+  type AudioPlaylist,
+  type AudioPlaylistStatus,
+} from 'expo-audio';
 
 export type SfxName =
   | 'move'
@@ -191,6 +199,49 @@ export function stopMusic(): void {
   } catch (error) {
     console.error('[audio] failed to stop music', error);
   }
+}
+
+/**
+ * Session-only transport controls for the in-match playlist, independent of the persisted
+ * `musicEnabled` setting — used by the pause/play/next/prev buttons in `LeftGamePanel`. No-op
+ * (rather than throwing) when called outside the match context, since the buttons are disabled
+ * whenever music is off but could still theoretically fire from a stale render.
+ */
+export function pauseMatchMusic(): void {
+  try {
+    matchPlaylist?.pause();
+  } catch (error) {
+    console.error('[audio] failed to pause match music', error);
+  }
+}
+
+export function resumeMatchMusic(): void {
+  try {
+    getMatchPlaylist().play();
+  } catch (error) {
+    console.error('[audio] failed to resume match music', error);
+  }
+}
+
+export function nextMatchTrack(): void {
+  try {
+    getMatchPlaylist().next();
+  } catch (error) {
+    console.error('[audio] failed to skip to next match track', error);
+  }
+}
+
+export function previousMatchTrack(): void {
+  try {
+    getMatchPlaylist().previous();
+  } catch (error) {
+    console.error('[audio] failed to skip to previous match track', error);
+  }
+}
+
+/** Reactive playlist status (current track index, playing/paused) for the transport buttons. */
+export function useMatchMusicStatus(): AudioPlaylistStatus {
+  return useAudioPlaylistStatus(getMatchPlaylist());
 }
 
 export function releaseAllAudio(): void {

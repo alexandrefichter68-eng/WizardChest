@@ -80,6 +80,9 @@ interface ChessBoardProps {
   checkSquare: Square | null;
   /** Squares about to be destroyed by Cataclysme — flashed in warning color before they vanish. */
   dangerSquares?: Square[];
+  /** "Piège Invisible" squares (several can be active at once), shown translucent — only ever
+   * passed for the caster's own view. */
+  trapSquares?: Square[];
   interactive: boolean;
   onSquareTap: (square: Square) => void;
   onPieceDrop: (from: Square, to: Square) => void;
@@ -98,12 +101,14 @@ export function ChessBoard({
   lastMove,
   checkSquare,
   dangerSquares,
+  trapSquares,
   interactive,
   onSquareTap,
   onPieceDrop,
 }: ChessBoardProps) {
   const squareSize = size / 8;
   const pieces = useMemo(() => readPieces(fen), [fen]);
+  const trapSquaresSet = useMemo(() => new Set(trapSquares ?? []), [trapSquares]);
   const legalTargetsSet = useMemo(() => new Set(legalTargets), [legalTargets]);
   const dangerSquaresSet = useMemo(() => new Set(dangerSquares ?? []), [dangerSquares]);
 
@@ -179,6 +184,7 @@ export function ChessBoard({
             const isLastMove = lastMove?.from === square || lastMove?.to === square;
             const isCheck = checkSquare === square;
             const isDanger = dangerSquaresSet.has(square);
+            const isTrap = trapSquaresSet.has(square);
             const piece = pieces.find((p) => p.square === square);
             const isBeingDragged = draggedSquare === square;
 
@@ -200,6 +206,11 @@ export function ChessBoard({
                 {isCheck && <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.highlightCheck }]} />}
                 {isSelected && <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.highlightSelected }]} />}
                 {isDanger && <View style={[StyleSheet.absoluteFill, styles.dangerOverlay]} />}
+                {isTrap && (
+                  <View style={styles.trapWrap} pointerEvents="none">
+                    <Text style={[styles.trapGlyph, { fontSize: squareSize * 0.4 }]}>◈</Text>
+                  </View>
+                )}
                 {isLegalTarget && !piece && (
                   <View style={styles.legalDotWrap}>
                     <View style={[styles.legalDot, { backgroundColor: palette.highlightLegal }]} />
@@ -291,6 +302,18 @@ const styles = StyleSheet.create({
   },
   dangerOverlay: {
     backgroundColor: 'rgba(255, 106, 43, 0.55)',
+  },
+  trapWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trapGlyph: {
+    color: 'rgba(139, 107, 255, 0.55)',
   },
   ghostPiece: {
     position: 'absolute',

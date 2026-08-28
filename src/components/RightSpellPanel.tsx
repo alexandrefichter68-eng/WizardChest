@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SPELLS, getSpellDef, type OwnedSpell, type SpellId } from '@/domain/spells';
+import { MAX_OWNED_SPELLS, SPELLS, getSpellDef, type OwnedSpell, type SpellId } from '@/domain/spells';
 import { palette } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
 
-function countBySpell(owned: OwnedSpell[]): Partial<Record<SpellId, number>> {
+function countAiCopies(owned: OwnedSpell[]): Partial<Record<SpellId, number>> {
+  // Only the AI's cosmetic flavor-purchase bar can ever show more than one copy of a spell — the
+  // player is capped at one unspent copy at a time (see `alreadyOwnedHint`), but the AI's random
+  // purchase loop in game.tsx isn't bound by that rule since it's never actually cast.
   const counts: Partial<Record<SpellId, number>> = {};
   for (const spell of owned) counts[spell.spellId] = (counts[spell.spellId] ?? 0) + 1;
   return counts;
@@ -17,21 +20,57 @@ interface RightSpellPanelProps {
   ownedSpells: OwnedSpell[];
   aiOwnedSpells: OwnedSpell[];
   armedSpell: SpellId | null;
+  /** True once a spell has already been cast this turn — the one-spell-per-turn rule. Buying stays enabled. */
+  castingDisabled?: boolean;
+  /** Restricts the shop to only these spell ids (e.g. Gartin's fight only teaches Cataclysme) — undefined shows every spell. */
+  availableSpellIds?: string[];
+  /** True in Entraînement mode — every shop purchase costs no gold, still capped by MAX_OWNED_SPELLS. */
+  freeSpells?: boolean;
   onArm: (spellId: SpellId) => void;
   onBuy: (spellId: SpellId) => void;
   width?: number;
 }
 
+type HoveredSpell = { id: SpellId; context: 'shop' | 'inventory' };
+
 /** Always-open right sidebar: opponent's purchased spells on top, the shop, then the player's own castable inventory. */
-export function RightSpellPanel({ gold, ownedSpells, aiOwnedSpells, armedSpell, onArm, onBuy, width = 116 }: RightSpellPanelProps) {
+export function RightSpellPanel({
+  gold,
+  ownedSpells,
+  aiOwnedSpells,
+  armedSpell,
+  castingDisabled,
+  availableSpellIds,
+  freeSpells,
+  onArm,
+  onBuy,
+  width = 116,
+}: RightSpellPanelProps) {
   const { t } = useTranslation();
-  const ownedCounts = countBySpell(ownedSpells);
-  const aiCounts = countBySpell(aiOwnedSpells);
-  const ownedIds = (Object.keys(ownedCounts) as SpellId[]).filter((id) => (ownedCounts[id] ?? 0) > 0);
+  const shopSpells = availableSpellIds ? SPELLS.filter((s) => availableSpellIds.includes(s.id)) : SPELLS;
+  // At most one unspent copy per spell, so this is really just "which ids are owned" — no count
+  // badges needed on the player's own inventory chips anymore.
+  const ownedSpellIds = new Set(ownedSpells.map((s) => s.spellId));
+  const inventoryFull = ownedSpells.length >= MAX_OWNED_SPELLS;
+  const aiCounts = countAiCopies(aiOwnedSpells);
   const aiIds = (Object.keys(aiCounts) as SpellId[]).filter((id) => (aiCounts[id] ?? 0) > 0);
   // Hover-to-preview (mouse/trackpad on web only — Pressable's onHoverIn/Out are no-ops on
-  // touch), so players can read a spell's effect before spending gold on it.
-  const [hoveredSpellId, setHoveredSpellId] = useState<SpellId | null>(null);
+  // touch), so players can read a spell's effect — and, if it's currently unusable, why — before
+  // spending gold on it or trying to cast it.
+  const [hovered, setHovered] = useState<HoveredSpell | null>(null);
+
+  const tooltipReason = (() => {
+    if (!hovered) return null;
+    if (hovered.context === 'shop') {
+      if (ownedSpellIds.has(hovered.id)) return t('spell.alreadyOwnedHint');
+      if (inventoryFull) return t('spell.inventoryFullHint');
+      return null;
+    }
+    const owned = ownedSpells.find((s) => s.spellId === hovered.id);
+    if (owned?.boughtThisTurn) return t('spell.boughtThisTurnHint');
+    if (castingDisabled && armedSpell !== hovered.id) return t('spell.oneSpellPerTurnHint');
+    return null;
+  })();
 
   return (
     <View style={[styles.panel, { width }]}>
@@ -59,23 +98,25 @@ export function RightSpellPanel({ gold, ownedSpells, aiOwnedSpells, armedSpell, 
         </View>
       </View>
       <ScrollView style={styles.shopList} contentContainerStyle={styles.shopContent}>
-        {SPELLS.map((spell) => {
-          const canAfford = gold >= spell.cost;
+        {shopSpells.map((spell) => {
+          const alreadyOwned = ownedSpellIds.has(spell.id);
+          const affordable = freeSpells || gold >= spell.cost;
+          const canBuy = affordable && !alreadyOwned && !inventoryFull;
           return (
             <Pressable
               key={spell.id}
-              onPress={() => canAfford && onBuy(spell.id)}
-              onHoverIn={() => setHoveredSpellId(spell.id)}
-              onHoverOut={() => setHoveredSpellId((current) => (current === spell.id ? null : current))}
+              onPress={() => canBuy && onBuy(spell.id)}
+              onHoverIn={() => setHovered({ id: spell.id, context: 'shop' })}
+              onHoverOut={() => setHovered((current) => (current?.id === spell.id && current.context === 'shop' ? null : current))}
               accessibilityRole="button"
               accessibilityLabel={`${t(spell.nameKey)} — ${t('spell.buy')}`}
-              accessibilityState={{ disabled: !canAfford }}
-              style={({ pressed }) => [styles.shopRow, !canAfford && styles.shopRowDisabled, pressed && canAfford && styles.shopRowPressed]}
+              accessibilityState={{ disabled: !canBuy }}
+              style={({ pressed }) => [styles.shopRow, !canBuy && styles.shopRowDisabled, pressed && canBuy && styles.shopRowPressed]}
             >
               <Text style={styles.chipIcon}>{spell.icon}</Text>
               <View style={styles.shopInfo}>
                 <Text style={styles.shopName} numberOfLines={1}>{t(spell.nameKey)}</Text>
-                <Text style={styles.shopCost}>{spell.cost} 🪙</Text>
+                <Text style={styles.shopCost}>{freeSpells ? t('spell.free') : `${spell.cost} 🪙`}</Text>
               </View>
             </Pressable>
           );
@@ -84,35 +125,41 @@ export function RightSpellPanel({ gold, ownedSpells, aiOwnedSpells, armedSpell, 
 
       <View style={styles.divider} />
 
-      <Text style={styles.sectionTitle}>{t('spell.yourSpells')}</Text>
+      <View style={styles.shopHeader}>
+        <Text style={styles.sectionTitle}>{t('spell.yourSpells')}</Text>
+        {castingDisabled && <Text style={styles.turnLimitHint}>{t('spell.oneSpellPerTurn')}</Text>}
+      </View>
       <ScrollView style={styles.inventoryList} contentContainerStyle={styles.chipRow}>
-        {ownedIds.length === 0 ? (
+        {ownedSpells.length === 0 ? (
           <Text style={styles.emptyText}>{t('spell.noSpells')}</Text>
         ) : (
-          ownedIds.map((id) => {
+          ownedSpells.map((owned) => {
+            const id = owned.spellId;
             const armed = armedSpell === id;
+            const disabled = owned.boughtThisTurn || (castingDisabled && !armed);
             return (
               <Pressable
-                key={id}
-                onPress={() => onArm(id)}
-                onHoverIn={() => setHoveredSpellId(id)}
-                onHoverOut={() => setHoveredSpellId((current) => (current === id ? null : current))}
+                key={owned.instanceId}
+                onPress={() => !disabled && onArm(id)}
+                onHoverIn={() => setHovered({ id, context: 'inventory' })}
+                onHoverOut={() => setHovered((current) => (current?.id === id && current.context === 'inventory' ? null : current))}
                 accessibilityRole="button"
                 accessibilityLabel={t(getSpellDef(id).nameKey)}
-                style={[styles.chip, armed && styles.chipArmed]}
+                accessibilityState={{ disabled }}
+                style={[styles.chip, armed && styles.chipArmed, disabled && styles.chipDisabled]}
               >
                 <Text style={styles.chipIcon}>{getSpellDef(id).icon}</Text>
-                {(ownedCounts[id] ?? 0) > 1 && <Text style={styles.chipCount}>×{ownedCounts[id]}</Text>}
               </Pressable>
             );
           })
         )}
       </ScrollView>
 
-      {hoveredSpellId && (
+      {hovered && (
         <View style={styles.tooltip} pointerEvents="none">
-          <Text style={styles.tooltipTitle}>{t(getSpellDef(hoveredSpellId).nameKey)}</Text>
-          <Text style={styles.tooltipText}>{t(getSpellDef(hoveredSpellId).descriptionKey)}</Text>
+          <Text style={styles.tooltipTitle}>{t(getSpellDef(hovered.id).nameKey)}</Text>
+          <Text style={styles.tooltipText}>{t(getSpellDef(hovered.id).descriptionKey)}</Text>
+          {tooltipReason && <Text style={styles.tooltipReason}>{tooltipReason}</Text>}
         </View>
       )}
     </View>
@@ -226,6 +273,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     lineHeight: fontSize.md + 4,
   },
+  tooltipReason: {
+    color: palette.goldBright,
+    fontSize: fontSize.xs,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
   inventoryList: {
     maxHeight: 130,
   },
@@ -252,6 +305,14 @@ const styles = StyleSheet.create({
   chipArmed: {
     borderColor: palette.gold,
     backgroundColor: palette.violet,
+  },
+  chipDisabled: {
+    opacity: 0.35,
+  },
+  turnLimitHint: {
+    color: palette.ivoryFaint,
+    fontSize: fontSize.xs,
+    fontStyle: 'italic',
   },
   chipIcon: {
     fontSize: 28,

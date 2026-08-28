@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { initAudio, setMusicContext } from '@/audio/sounds';
+import { useAuthStore } from '@/store/authStore';
 import { useHistoryStore } from '@/store/historyStore';
 import { useLeaderboardStore } from '@/store/leaderboardStore';
 import { useProfileStore } from '@/store/profileStore';
@@ -28,8 +29,9 @@ export default function RootLayout() {
   const historyHydrated = useHistoryStore((s) => s.hasHydrated);
   const leaderboardHydrated = useLeaderboardStore((s) => s.hasHydrated);
   const rewardsHydrated = useRewardsStore((s) => s.hasHydrated);
+  const authHydrated = useAuthStore((s) => s.hasHydrated);
 
-  const allHydrated = profileHydrated && settingsHydrated && historyHydrated && leaderboardHydrated && rewardsHydrated;
+  const allHydrated = profileHydrated && settingsHydrated && historyHydrated && leaderboardHydrated && rewardsHydrated && authHydrated;
 
   useEffect(() => {
     if (allHydrated) {

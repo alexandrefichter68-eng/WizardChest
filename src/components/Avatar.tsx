@@ -1,3 +1,4 @@
+import { Image, StyleSheet } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { palette } from '@/theme/colors';
 import type { AvatarSpec } from '@/types';
@@ -5,13 +6,25 @@ import type { AvatarSpec } from '@/types';
 interface AvatarProps {
   avatar: AvatarSpec;
   size?: number;
+  /** User-imported profile photo (data URI) — takes priority over the generated avatar when present. */
+  photoUri?: string;
 }
 
 /**
  * Deterministic, code-generated avatar: a gradient disc (hue from the seed) with the player's
- * initials and a small variant ring/dot pattern. No external image assets required.
+ * initials and a small variant ring/dot pattern. No external image assets required. Renders an
+ * imported photo instead, cropped to the same circle, when `photoUri` is set.
  */
-export function Avatar({ avatar, size = 56 }: AvatarProps) {
+export function Avatar({ avatar, size = 56, photoUri }: AvatarProps) {
+  if (photoUri) {
+    return (
+      <Image
+        source={{ uri: photoUri }}
+        style={[styles.photo, { width: size, height: size, borderRadius: size / 2 }]}
+      />
+    );
+  }
+
   const gradientId = `avatar-grad-${avatar.seed}-${avatar.hue}`;
   const hue = avatar.hue;
   const colorA = `hsl(${hue}, 55%, 38%)`;
@@ -55,3 +68,10 @@ export function Avatar({ avatar, size = 56 }: AvatarProps) {
     </Svg>
   );
 }
+
+const styles = StyleSheet.create({
+  photo: {
+    borderWidth: 2,
+    borderColor: palette.stoneBorder,
+  },
+});

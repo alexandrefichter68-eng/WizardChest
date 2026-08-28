@@ -1,5 +1,5 @@
 import type { Chess, PieceSymbol } from 'chess.js';
-import type { PlayStyle } from '@/types';
+import type { PieceColor, PlayStyle } from '@/types';
 
 /** Classic centipawn material values. */
 export const PIECE_VALUES: Record<PieceSymbol, number> = {
@@ -148,8 +148,13 @@ export function getStyleWeights(style: PlayStyle | null): StyleWeights {
 /**
  * Evaluates the position from the side-to-move's perspective (negamax convention): positive
  * means the side to move is better off.
+ *
+ * `disguisedColor` — the "Camouflage" spell: every non-king, non-pawn piece of this color is
+ * scored as if it were a pawn (value + piece-square table) for the duration of one AI search, so
+ * the engine genuinely misjudges the threat/value of the disguised side's pieces (may accept a bad
+ * trade, ignore a real attacker) instead of it being a purely cosmetic effect.
  */
-export function evaluatePosition(chess: Chess, style: PlayStyle | null = null): number {
+export function evaluatePosition(chess: Chess, style: PlayStyle | null = null, disguisedColor: PieceColor | null = null): number {
   if (chess.isCheckmate()) return -100000;
   if (chess.isDraw() || chess.isStalemate() || chess.isThreefoldRepetition() || chess.isInsufficientMaterial()) {
     return 0;
@@ -166,12 +171,13 @@ export function evaluatePosition(chess: Chess, style: PlayStyle | null = null): 
       if (!cell) continue;
       const index = r * 8 + f;
       const pieceIndex = cell.color === 'w' ? index : mirrorIndex(index);
-      let value = PIECE_VALUES[cell.type];
-      if (cell.type === 'k') {
+      const effectiveType: PieceSymbol = cell.color === disguisedColor && cell.type !== 'k' && cell.type !== 'p' ? 'p' : cell.type;
+      let value = PIECE_VALUES[effectiveType];
+      if (effectiveType === 'k') {
         value += endgame ? KING_ENDGAME_TABLE[pieceIndex]! : KING_MIDDLEGAME_TABLE[pieceIndex]!;
       } else {
-        value += TABLES[cell.type]![pieceIndex]!;
-        if (cell.type === 'p' && (f === 3 || f === 4) && (r === 3 || r === 4)) {
+        value += TABLES[effectiveType]![pieceIndex]!;
+        if (effectiveType === 'p' && (f === 3 || f === 4) && (r === 3 || r === 4)) {
           value += 6 * weights.centerControl;
         }
       }

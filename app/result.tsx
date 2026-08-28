@@ -77,7 +77,7 @@ export default function ResultScreen() {
     <ScreenBackground>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.avatarsRow}>
-          <Avatar avatar={profile.avatar} size={64} />
+          <Avatar avatar={profile.avatar} photoUri={profile.photoUri} size={64} />
           <Text style={styles.vsText}>VS</Text>
           <Avatar avatar={lastResult.opponent.avatar} size={64} />
         </View>

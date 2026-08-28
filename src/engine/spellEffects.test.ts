@@ -1,13 +1,16 @@
 import { Chess } from 'chess.js';
 import {
   applyCorruption,
+  applyEchoOfThePast,
   applyExplosion,
   applyTeleport,
   applyTeleportWithPromotion,
   getAdjacentSquares,
   getOrthogonalAdjacentSquares,
   getTeleportPromotionSquare,
+  hasLineOfSight,
   promoteEdgePawns,
+  resolveDestructionReactions,
 } from '@/engine/spellEffects';
 
 describe('spellEffects', () => {
@@ -166,6 +169,106 @@ describe('spellEffects', () => {
     it('throws if the target square is empty', () => {
       const chess = new Chess('k7/8/8/8/8/8/8/4K3 w - - 0 1');
       expect(() => applyCorruption(chess, 'd4', 'w')).toThrow();
+    });
+  });
+
+  describe('applyEchoOfThePast', () => {
+    it('moves the piece from its current square onto the (empty) previous one', () => {
+      const chess = new Chess('k7/8/8/8/3N4/8/8/4K3 w - - 0 1');
+      applyEchoOfThePast(chess, 'd4', 'b3');
+      expect(chess.get('d4')).toBeUndefined();
+      expect(chess.get('b3')).toEqual({ type: 'n', color: 'w' });
+    });
+
+    it('does not change whose turn it is', () => {
+      const chess = new Chess('k7/8/8/8/3N4/8/8/4K3 w - - 0 1');
+      applyEchoOfThePast(chess, 'd4', 'b3');
+      expect(chess.turn()).toBe('w');
+    });
+
+    it('refuses to move a king', () => {
+      const chess = new Chess('k7/8/8/8/8/8/8/4K3 w - - 0 1');
+      expect(() => applyEchoOfThePast(chess, 'a8', 'a7')).toThrow();
+    });
+
+    it('throws if the destination square is occupied', () => {
+      const chess = new Chess('k7/8/8/8/3N4/8/2P5/4K3 w - - 0 1');
+      expect(() => applyEchoOfThePast(chess, 'd4', 'c2')).toThrow();
+      // Nothing should have moved — the throw must happen before any mutation.
+      expect(chess.get('d4')).toEqual({ type: 'n', color: 'w' });
+      expect(chess.get('c2')).toEqual({ type: 'p', color: 'w' });
+    });
+  });
+
+  describe('hasLineOfSight', () => {
+    it('is true along a clear rank, file, or diagonal', () => {
+      // Kings placed off the a-file, rank 1, and the a1-h8 diagonal so they don't block any of
+      // the three lines under test.
+      const chess = new Chess('8/8/6k1/8/8/1K6/8/8 w - - 0 1');
+      expect(hasLineOfSight(chess, 'a1', 'a8')).toBe(true);
+      expect(hasLineOfSight(chess, 'a1', 'h1')).toBe(true);
+      expect(hasLineOfSight(chess, 'a1', 'h8')).toBe(true);
+    });
+
+    it('is false when a piece blocks the path', () => {
+      const chess = new Chess('4k3/8/8/8/4P3/8/8/4K3 w - - 0 1');
+      expect(hasLineOfSight(chess, 'e1', 'e8')).toBe(false);
+    });
+
+    it('is false for squares sharing neither a line nor a diagonal', () => {
+      const chess = new Chess('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+      expect(hasLineOfSight(chess, 'a1', 'b3')).toBe(false);
+    });
+
+    it('is false for the same square', () => {
+      const chess = new Chess('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+      expect(hasLineOfSight(chess, 'a1', 'a1')).toBe(false);
+    });
+  });
+
+  describe('resolveDestructionReactions', () => {
+    const emptyState = { trapSquares: [], bountyMarkedSquare: null, bountyMarkedByColor: null, boundPair: null };
+
+    it('reports no reaction when nothing is tracked', () => {
+      const result = resolveDestructionReactions(['d4'], emptyState);
+      expect(result).toEqual({ goldStolenBy: null, extraDestroyedSquares: [], consumedTrapSquares: [], bountyConsumed: false, boundPairConsumed: false });
+    });
+
+    it('consumes the trap when its square is among the destroyed ones', () => {
+      const result = resolveDestructionReactions(['e5'], { ...emptyState, trapSquares: ['e5'] });
+      expect(result.consumedTrapSquares).toEqual(['e5']);
+      expect(result.extraDestroyedSquares).toEqual([]);
+    });
+
+    it('leaves other simultaneously-armed traps untouched', () => {
+      const result = resolveDestructionReactions(['e5'], { ...emptyState, trapSquares: ['e5', 'b2', 'g7'] });
+      expect(result.consumedTrapSquares).toEqual(['e5']);
+    });
+
+    it('steals gold for the marking color when the bounty-marked piece dies', () => {
+      const result = resolveDestructionReactions(['g7'], { ...emptyState, bountyMarkedSquare: 'g7', bountyMarkedByColor: 'w' });
+      expect(result.bountyConsumed).toBe(true);
+      expect(result.goldStolenBy).toBe('w');
+    });
+
+    it("destroys the bound partner when one of a Liaison Funeste pair dies", () => {
+      const result = resolveDestructionReactions(['c3'], { ...emptyState, boundPair: ['c3', 'f6'] });
+      expect(result.boundPairConsumed).toBe(true);
+      expect(result.extraDestroyedSquares).toEqual(['f6']);
+    });
+
+    it('chains: a bound-pair death landing on a trap square also consumes that trap', () => {
+      const result = resolveDestructionReactions(['c3'], { ...emptyState, trapSquares: ['f6'], boundPair: ['c3', 'f6'] });
+      expect(result.boundPairConsumed).toBe(true);
+      expect(result.consumedTrapSquares).toEqual(['f6']);
+      expect(result.extraDestroyedSquares).toEqual(['f6']);
+    });
+
+    it('does not re-trigger the bound pair a second time for the same call', () => {
+      const result = resolveDestructionReactions(['c3', 'f6'], { ...emptyState, boundPair: ['c3', 'f6'] });
+      expect(result.boundPairConsumed).toBe(true);
+      // Both squares were already in the initial destroyed list — no *extra* destruction needed.
+      expect(result.extraDestroyedSquares).toEqual([]);
     });
   });
 });

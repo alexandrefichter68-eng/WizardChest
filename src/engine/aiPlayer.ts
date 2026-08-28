@@ -2,7 +2,7 @@ import { Chess, type Move, type Square } from 'chess.js';
 import { difficultyFromOpponent, pickMoveWithSkillNoise } from '@/engine/difficulty';
 import { findBestMove } from '@/engine/search';
 import { createSeededRng, randomFloat } from '@/utils/random';
-import type { PlayStyle } from '@/types';
+import type { PieceColor, PlayStyle } from '@/types';
 
 export interface AiMoveRequest {
   fen: string;
@@ -13,6 +13,8 @@ export interface AiMoveRequest {
   protectedSquare?: Square | null;
   /** A square the AI's piece must not move from this turn (the player's "Entrave" spell). */
   frozenSquare?: Square | null;
+  /** This color's non-king, non-pawn pieces are evaluated as pawns (the player's "Camouflage" spell). */
+  disguisedColor?: PieceColor | null;
 }
 
 export interface AiMoveResponse {
@@ -22,15 +24,18 @@ export interface AiMoveResponse {
 }
 
 /**
- * Natural-feeling thinking windows (ms) keyed by depth, so the AI never answers instantly and
- * stronger opponents visibly "think" longer, without ever blocking on a fixed delay if the
- * search itself already took that long. Widened and randomized further below (an occasional
- * extra "long think" pause) so the delay never feels metronomic from one move to the next.
+ * Natural-feeling thinking windows (ms) keyed by depth, so a fast/shallow search still pauses
+ * briefly instead of answering instantly. Kept short on purpose: for the deeper searches (division
+ * ceiling and up) the real computation alone already takes 1.5-2s+, so `remainingMs` below is
+ * almost always 0 for those — this window only ever adds *real* extra wait for the fast, weak
+ * bots that would otherwise feel robotic. (Previously up to 3000ms, plus an 18%-chance 500-2200ms
+ * "long think" bonus stacked on top — that combination is what made even a fast search feel
+ * sluggish; both are trimmed hard here.)
  */
 function targetThinkingWindowMs(depth: number): [number, number] {
-  if (depth <= 2) return [250, 1400];
-  if (depth <= 4) return [400, 2200];
-  return [600, 3000];
+  if (depth <= 2) return [150, 450];
+  if (depth <= 4) return [200, 650];
+  return [250, 800];
 }
 
 export async function computeAiMove(request: AiMoveRequest): Promise<AiMoveResponse> {
@@ -38,10 +43,11 @@ export async function computeAiMove(request: AiMoveRequest): Promise<AiMoveRespo
   const difficulty = difficultyFromOpponent(request.aiDepth, request.aiSkillNoise, request.style);
   const startedAt = Date.now();
 
-  const result = findBestMove(chess, {
+  const result = await findBestMove(chess, {
     maxDepth: difficulty.maxDepth,
     timeBudgetMs: difficulty.timeBudgetMs,
     style: difficulty.style,
+    disguisedColor: request.disguisedColor ?? null,
   });
 
   let eligibleMoveScores = request.protectedSquare
@@ -59,12 +65,7 @@ export async function computeAiMove(request: AiMoveRequest): Promise<AiMoveRespo
 
   const rng = createSeededRng(`delay:${request.fen}:${startedAt}`);
   const [minWindow, maxWindow] = targetThinkingWindowMs(request.aiDepth);
-  let targetDelayMs = randomFloat(rng, minWindow, maxWindow);
-  // ~18% of the time, throw in an extra "long think" pause so the timing never settles into a
-  // predictable rhythm — more variance than a single uniform window can give on its own.
-  if (randomFloat(rng, 0, 1) < 0.18) {
-    targetDelayMs += randomFloat(rng, 500, 2200);
-  }
+  const targetDelayMs = randomFloat(rng, minWindow, maxWindow);
   const remainingMs = Math.max(0, targetDelayMs - computeElapsedMs);
   if (remainingMs > 0) {
     await new Promise((resolve) => setTimeout(resolve, remainingMs));

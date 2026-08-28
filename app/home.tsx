@@ -11,8 +11,12 @@ import { FlagBadge } from '@/components/FlagBadge';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ScreenBackground } from '@/components/ScreenBackground';
 import { getDivisionById, getDivisionProgress } from '@/domain/divisions';
+import { getTimeControl } from '@/domain/timeControls';
+import { TRAINING_BOT } from '@/domain/trainingBot';
 import { computeDailyRewardXp } from '@/domain/xp';
+import { useMatchStore } from '@/store/matchStore';
 import { useProfileStore } from '@/store/profileStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { palette } from '@/theme/colors';
 import { minTouchTarget, radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
@@ -32,6 +36,8 @@ export default function HomeScreen() {
   const profile = useProfileStore((s) => s.profile);
   const setUsername = useProfileStore((s) => s.setUsername);
   const claimDailyReward = useProfileStore((s) => s.claimDailyReward);
+  const startMatch = useMatchStore((s) => s.startMatch);
+  const defaultTimeControl = useSettingsStore((s) => s.settings.defaultTimeControl);
 
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(profile.username);
@@ -47,11 +53,16 @@ export default function HomeScreen() {
     setEditingName(false);
   };
 
+  const handleTraining = () => {
+    startMatch(TRAINING_BOT, getTimeControl(defaultTimeControl), Math.random() < 0.5 ? 'w' : 'b', { isUntimed: true });
+    router.push('/game');
+  };
+
   return (
     <ScreenBackground>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Avatar avatar={profile.avatar} size={64} />
+          <Avatar avatar={profile.avatar} photoUri={profile.photoUri} size={64} />
           <View style={styles.headerInfo}>
             {editingName ? (
               <TextInput
@@ -119,6 +130,9 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.navGrid}>
+          <NavTile emoji="⚔️" label={t('home.adventure')} onPress={() => router.push('/adventure')} />
+          <NavTile emoji="📖" label={t('home.spellbook')} onPress={() => router.push('/spellbook')} />
+          <NavTile emoji="🥋" label={t('home.training')} onPress={handleTraining} />
           <NavTile emoji="🏆" label={t('home.leaderboard')} onPress={() => router.push('/leaderboard')} />
           <NavTile emoji="📜" label={t('home.history')} onPress={() => router.push('/history')} />
           <NavTile emoji="🎁" label={t('home.rewards')} onPress={() => router.push('/rewards')} />

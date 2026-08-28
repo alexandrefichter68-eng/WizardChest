@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { VolumeControl } from '@/components/VolumeControl';
@@ -12,6 +12,11 @@ export interface ChatEntry {
   text: string;
 }
 
+export interface GameLogEntry {
+  id: string;
+  text: string;
+}
+
 interface LeftGamePanelProps {
   messages: ChatEntry[];
   onSend: (text: string) => void;
@@ -19,13 +24,34 @@ interface LeftGamePanelProps {
   musicVolume: number;
   onToggleMusic: (enabled: boolean) => void;
   onChangeVolume: (volume: number) => void;
+  /** Session-only transport controls, independent of the persisted `musicEnabled` setting. */
+  isMusicPlaying: boolean;
+  onToggleMusicPlayback: () => void;
+  onNextTrack: () => void;
+  onPrevTrack: () => void;
+  /** Readable feed of moves and spell casts, oldest first. */
+  logEntries: GameLogEntry[];
   width?: number;
 }
 
-/** Always-open left sidebar: local text chat log, plus music controls reachable mid-match. */
-export function LeftGamePanel({ messages, onSend, musicEnabled, musicVolume, onToggleMusic, onChangeVolume, width = 116 }: LeftGamePanelProps) {
+/** Always-open left sidebar: local text chat log, music controls, then a readable match log. */
+export function LeftGamePanel({
+  messages,
+  onSend,
+  musicEnabled,
+  musicVolume,
+  onToggleMusic,
+  onChangeVolume,
+  isMusicPlaying,
+  onToggleMusicPlayback,
+  onNextTrack,
+  onPrevTrack,
+  logEntries,
+  width = 116,
+}: LeftGamePanelProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
+  const logScrollRef = useRef<ScrollView>(null);
 
   const handleSend = () => {
     const trimmed = draft.trim();
@@ -61,6 +87,26 @@ export function LeftGamePanel({ messages, onSend, musicEnabled, musicVolume, onT
 
       <View style={styles.divider} />
 
+      <Text style={styles.sectionTitle}>{t('game.logTitle')}</Text>
+      <ScrollView
+        ref={logScrollRef}
+        style={styles.logList}
+        contentContainerStyle={styles.logContent}
+        onContentSizeChange={() => logScrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {logEntries.length === 0 ? (
+          <Text style={styles.logEmptyText}>{t('game.logEmpty')}</Text>
+        ) : (
+          logEntries.map((entry) => (
+            <Text key={entry.id} style={styles.logEntry}>
+              {entry.text}
+            </Text>
+          ))
+        )}
+      </ScrollView>
+
+      <View style={styles.divider} />
+
       <View style={styles.musicHeader}>
         <Text style={styles.sectionTitle}>{t('settings.music')}</Text>
         <Switch
@@ -71,6 +117,35 @@ export function LeftGamePanel({ messages, onSend, musicEnabled, musicVolume, onT
         />
       </View>
       {musicEnabled && <VolumeControl label={t('settings.musicVolume')} value={musicVolume} onChange={onChangeVolume} />}
+      <View style={styles.transportRow}>
+        <Pressable
+          onPress={onPrevTrack}
+          disabled={!musicEnabled}
+          accessibilityRole="button"
+          accessibilityLabel={t('settings.musicPrev')}
+          style={({ pressed }) => [styles.transportButton, !musicEnabled && styles.transportButtonDisabled, pressed && musicEnabled && styles.transportButtonPressed]}
+        >
+          <Text style={styles.transportIcon}>⏮</Text>
+        </Pressable>
+        <Pressable
+          onPress={onToggleMusicPlayback}
+          disabled={!musicEnabled}
+          accessibilityRole="button"
+          accessibilityLabel={isMusicPlaying ? t('settings.musicPause') : t('settings.musicPlay')}
+          style={({ pressed }) => [styles.transportButton, !musicEnabled && styles.transportButtonDisabled, pressed && musicEnabled && styles.transportButtonPressed]}
+        >
+          <Text style={styles.transportIcon}>{isMusicPlaying ? '⏸' : '▶'}</Text>
+        </Pressable>
+        <Pressable
+          onPress={onNextTrack}
+          disabled={!musicEnabled}
+          accessibilityRole="button"
+          accessibilityLabel={t('settings.musicNext')}
+          style={({ pressed }) => [styles.transportButton, !musicEnabled && styles.transportButtonDisabled, pressed && musicEnabled && styles.transportButtonPressed]}
+        >
+          <Text style={styles.transportIcon}>⏭</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -146,5 +221,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  transportRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xxs,
+  },
+  transportButton: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.stonePanelRaised,
+    borderWidth: 1,
+    borderColor: palette.stoneBorder,
+  },
+  transportButtonPressed: {
+    opacity: 0.7,
+  },
+  transportButtonDisabled: {
+    opacity: 0.35,
+  },
+  transportIcon: {
+    color: palette.ivory,
+    fontSize: fontSize.md,
+  },
+  logList: {
+    maxHeight: 180,
+  },
+  logContent: {
+    gap: 4,
+  },
+  logEmptyText: {
+    color: palette.ivoryFaint,
+    fontSize: fontSize.sm,
+    lineHeight: fontSize.md,
+  },
+  logEntry: {
+    color: palette.ivoryMuted,
+    fontSize: fontSize.xs,
+    lineHeight: fontSize.sm + 4,
   },
 });

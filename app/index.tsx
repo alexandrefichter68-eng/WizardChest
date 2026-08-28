@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import { ScreenBackground } from '@/components/ScreenBackground';
+import { useAuthStore } from '@/store/authStore';
 import { useHistoryStore } from '@/store/historyStore';
 import { useLeaderboardStore } from '@/store/leaderboardStore';
 import { useProfileStore } from '@/store/profileStore';
@@ -31,6 +32,8 @@ export default function LaunchScreen() {
   const historyHydrated = useHistoryStore((s) => s.hasHydrated);
   const leaderboardHydrated = useLeaderboardStore((s) => s.hasHydrated);
   const rewardsHydrated = useRewardsStore((s) => s.hasHydrated);
+  const authHydrated = useAuthStore((s) => s.hasHydrated);
+  const hasAccount = useAuthStore((s) => s.hasAccount);
   const ensureLeaderboardInitialized = useLeaderboardStore((s) => s.ensureInitialized);
   const refreshLeaderboardIfNeeded = useLeaderboardStore((s) => s.refreshIfNeeded);
 
@@ -53,7 +56,7 @@ export default function LaunchScreen() {
     transform: [{ rotate: `${ringRotation.value}deg` }],
   }), [ringRotation]);
 
-  const allHydrated = profileHydrated && settingsHydrated && historyHydrated && leaderboardHydrated && rewardsHydrated;
+  const allHydrated = profileHydrated && settingsHydrated && historyHydrated && leaderboardHydrated && rewardsHydrated && authHydrated;
 
   useEffect(() => {
     if (!allHydrated) return;
@@ -61,10 +64,11 @@ export default function LaunchScreen() {
     refreshLeaderboardIfNeeded();
 
     const timer = setTimeout(() => {
-      router.replace('/home');
+      router.replace(hasAccount ? '/home' : '/auth');
     }, MIN_DISPLAY_MS);
     return () => clearTimeout(timer);
-    // Only re-run once hydration completes; profile.elo used solely to seed the pool once.
+    // Only re-run once hydration completes; profile.elo/hasAccount read solely to seed the pool
+    // and pick the destination once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allHydrated]);
 

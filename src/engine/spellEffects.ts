@@ -1,5 +1,6 @@
 import { Chess, type PieceSymbol, type Square } from 'chess.js';
 import { assertSquareIsNotKing } from '@/engine/boardUtils';
+import type { PieceColor } from '@/types';
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
 
@@ -164,4 +165,110 @@ export function applyCorruption(chess: Chess, targetSquare: Square, newColor: 'w
   if (!piece) throw new Error('applyCorruption: target square must hold a piece');
   chess.remove(targetSquare);
   chess.put({ type: piece.type, color: newColor }, targetSquare);
+}
+
+/**
+ * "Écho du Passé": moves the targeted piece (allied or enemy) back onto the square it occupied
+ * before its last tracked move. `to` must currently be empty — callers only ever offer squares
+ * with a known, presently-vacant previous position as valid targets. Never a king. Mid-turn
+ * effect, like corruption/explosion: doesn't pass the turn.
+ */
+export function applyEchoOfThePast(chess: Chess, from: Square, to: Square): void {
+  assertSquareIsNotKing(chess, from, 'echo_du_passe');
+  const piece = chess.get(from);
+  if (!piece) throw new Error('applyEchoOfThePast: source square must hold a piece');
+  if (chess.get(to)) throw new Error('applyEchoOfThePast: destination square must be empty');
+  chess.remove(from);
+  chess.put({ type: piece.type, color: piece.color }, to);
+  promoteEdgePawns(chess, [to]);
+}
+
+/**
+ * True if `a` and `b` share a rank, file, or diagonal with no piece occupying any square strictly
+ * between them (a rook/bishop-style clear line of sight). Used by Liaison Funeste — the two bound
+ * pieces don't need to be able to *move* to each other, just see each other.
+ */
+export function hasLineOfSight(chess: Chess, a: Square, b: Square): boolean {
+  const [fileA, rankA] = toCoords(a);
+  const [fileB, rankB] = toCoords(b);
+  const df = fileB - fileA;
+  const dr = rankB - rankA;
+  if (df === 0 && dr === 0) return false;
+  if (df !== 0 && dr !== 0 && Math.abs(df) !== Math.abs(dr)) return false;
+  const stepFile = Math.sign(df);
+  const stepRank = Math.sign(dr);
+  const steps = Math.max(Math.abs(df), Math.abs(dr));
+  for (let i = 1; i < steps; i++) {
+    const sq = toSquare(fileA + stepFile * i, rankA + stepRank * i);
+    if (sq && chess.get(sq)) return false;
+  }
+  return true;
+}
+
+export interface DestructionReactionState {
+  /** Piège Invisible: several can be active at once — the first piece (any color) to land on any
+   * of these squares is destroyed. */
+  trapSquares: Square[];
+  /** Chasseur de Prime: if the marked piece dies, `bountyMarkedByColor` steals all enemy gold. */
+  bountyMarkedSquare: Square | null;
+  bountyMarkedByColor: PieceColor | null;
+  /** Liaison Funeste: if either square's piece dies, the other's piece dies too. */
+  boundPair: [Square, Square] | null;
+}
+
+export interface DestructionReactionResult {
+  goldStolenBy: PieceColor | null;
+  /** Additional squares destroyed as a reaction (e.g. a Liaison Funeste partner) — the caller must
+   * remove these pieces from the board too, on top of whatever it already destroyed. */
+  extraDestroyedSquares: Square[];
+  /** Which of `trapSquares` were consumed by this call — the caller removes exactly these, leaving
+   * any other still-armed traps in place. */
+  consumedTrapSquares: Square[];
+  bountyConsumed: boolean;
+  boundPairConsumed: boolean;
+}
+
+/**
+ * Given the squares just cleared of a piece (by any means — Cataclysme, a normal capture, Prix du
+ * Sang, a Piège Invisible trigger…), works out which of the cross-spell "reacts to a death"
+ * mechanisms fire, including chains (e.g. a Liaison Funeste death lands on a trap square too).
+ * Pure and side-effect-free: the caller applies `extraDestroyedSquares`/`goldStolenBy` to its own
+ * board/gold state.
+ */
+export function resolveDestructionReactions(
+  destroyedSquares: Square[],
+  state: DestructionReactionState,
+): DestructionReactionResult {
+  const result: DestructionReactionResult = {
+    goldStolenBy: null,
+    extraDestroyedSquares: [],
+    consumedTrapSquares: [],
+    bountyConsumed: false,
+    boundPairConsumed: false,
+  };
+  const seen = new Set<Square>(destroyedSquares);
+  const queue = [...destroyedSquares];
+  let boundPair = state.boundPair;
+
+  while (queue.length > 0) {
+    const square = queue.shift()!;
+    if (state.trapSquares.includes(square) && !result.consumedTrapSquares.includes(square)) {
+      result.consumedTrapSquares.push(square);
+    }
+    if (state.bountyMarkedSquare === square && state.bountyMarkedByColor) {
+      result.bountyConsumed = true;
+      result.goldStolenBy = state.bountyMarkedByColor;
+    }
+    if (boundPair && (boundPair[0] === square || boundPair[1] === square)) {
+      const other = boundPair[0] === square ? boundPair[1] : boundPair[0];
+      result.boundPairConsumed = true;
+      boundPair = null; // consumed once — a further chain reaction can't re-trigger it
+      if (!seen.has(other)) {
+        seen.add(other);
+        result.extraDestroyedSquares.push(other);
+        queue.push(other);
+      }
+    }
+  }
+  return result;
 }
