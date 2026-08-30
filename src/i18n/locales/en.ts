@@ -23,7 +23,7 @@ export const en = {
     preparingBoard: 'Preparing the board…',
   },
   auth: {
-    subtitle: 'Log in or create an account to get ready for multiplayer.',
+    subtitle: 'Log in or create an account to play, including online against real players.',
     signupTab: 'Sign up',
     loginTab: 'Log in',
     changePhoto: 'Change photo',
@@ -289,7 +289,7 @@ export const en = {
     signOut: 'Sign out',
     about: 'About',
     privacyPolicy: 'Privacy policy',
-    aiDisclaimer: 'Opponents and the leaderboard are entirely generated and controlled by a local AI. This is not a real multiplayer mode.',
+    aiDisclaimer: 'The classic "Play" mode is still against a local AI. To face a real player, use "Online duel" from the home screen.',
     version: 'Version {{version}}',
     dangerZone: 'Danger zone',
     resetProgress: 'Reset progress',

@@ -33,7 +33,6 @@ export default function LaunchScreen() {
   const leaderboardHydrated = useLeaderboardStore((s) => s.hasHydrated);
   const rewardsHydrated = useRewardsStore((s) => s.hasHydrated);
   const authHydrated = useAuthStore((s) => s.hasHydrated);
-  const hasSession = useAuthStore((s) => s.session !== null);
   const ensureLeaderboardInitialized = useLeaderboardStore((s) => s.ensureInitialized);
   const refreshLeaderboardIfNeeded = useLeaderboardStore((s) => s.refreshIfNeeded);
 
@@ -64,11 +63,13 @@ export default function LaunchScreen() {
     refreshLeaderboardIfNeeded();
 
     const timer = setTimeout(() => {
-      router.replace(hasSession ? '/home' : '/auth');
+      // Always lands on the login screen, even with a still-valid session — no auto-skip to
+      // home. A deliberate choice: makes it obvious every launch which account is active, and
+      // easy to switch accounts without hunting for the sign-out button first.
+      router.replace('/auth');
     }, MIN_DISPLAY_MS);
     return () => clearTimeout(timer);
-    // Only re-run once hydration completes; profile.elo/hasSession read solely to seed the pool
-    // and pick the destination once.
+    // Only re-run once hydration completes; profile.elo read solely to seed the leaderboard pool.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allHydrated]);
 

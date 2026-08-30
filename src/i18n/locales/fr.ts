@@ -23,7 +23,7 @@ export const fr = {
     preparingBoard: 'Préparation de l’échiquier…',
   },
   auth: {
-    subtitle: 'Connecte-toi ou crée un compte pour préparer le mode multijoueur.',
+    subtitle: 'Connecte-toi ou crée un compte pour jouer, y compris en ligne contre de vrais joueurs.',
     signupTab: 'Inscription',
     loginTab: 'Connexion',
     changePhoto: 'Changer la photo',
@@ -289,7 +289,7 @@ export const fr = {
     signOut: 'Se déconnecter',
     about: 'À propos',
     privacyPolicy: 'Politique de confidentialité',
-    aiDisclaimer: 'Les adversaires et le classement sont entièrement générés et contrôlés par une intelligence artificielle locale. Il ne s’agit pas d’un mode multijoueur réel.',
+    aiDisclaimer: 'Le mode "Jouer" classique reste face à une intelligence artificielle locale. Pour affronter un vrai joueur, utilise "Duel en ligne" depuis l’accueil.',
     version: 'Version {{version}}',
     dangerZone: 'Zone sensible',
     resetProgress: 'Réinitialiser la progression',
