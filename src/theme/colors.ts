@@ -1,5 +1,5 @@
 /**
- * Wizard Chest — dark fantasy palette.
+ * Wizard Chess — dark fantasy palette.
  * Stone/ivory board, gold/violet/arcane-blue accents.
  */
 export const palette = {

@@ -231,7 +231,7 @@ export default function GameScreen() {
     const whiteName = resolvedPlayerColor === 'w' ? profile.username : opponent.username;
     const blackName = resolvedPlayerColor === 'b' ? profile.username : opponent.username;
     try {
-      chess.header('Event', 'Wizard Chest', 'White', whiteName, 'Black', blackName, 'Date', new Date().toISOString().slice(0, 10));
+      chess.header('Event', 'Wizard Chess', 'White', whiteName, 'Black', blackName, 'Date', new Date().toISOString().slice(0, 10));
     } catch {
       // Header formatting is cosmetic only; ignore failures.
     }

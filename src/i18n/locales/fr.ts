@@ -1,6 +1,6 @@
 export const fr = {
   common: {
-    appName: 'Wizard Chest',
+    appName: 'Wizard Chess',
     play: 'Jouer',
     cancel: 'Annuler',
     confirm: 'Confirmer',

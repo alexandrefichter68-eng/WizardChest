@@ -21,32 +21,33 @@ export default function PrivacyScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.updated}>Dernière mise à jour : 25 août 2026</Text>
+          <Text style={styles.updated}>Dernière mise à jour : 30 août 2026</Text>
 
           <Text style={styles.heading}>{t('legal.aiTitle')}</Text>
           <Text style={styles.paragraph}>
-            Wizard Chest est un jeu entièrement solo. Tous les « adversaires » que vous rencontrez en matchmaking,
-            ainsi que l’intégralité du classement (« Ligue solo »), sont générés et joués par une intelligence
-            artificielle locale exécutée directement sur votre appareil. Il n’existe aucun mode multijoueur réel,
-            aucun autre joueur humain, aucun serveur de jeu en ligne. Les pseudonymes, avatars, pays, statistiques et
-            temps de recherche affichés sont simulés pour donner une sensation de compétition, mais ne correspondent
-            à aucune personne réelle.
+            Le mode « Jouer » classique et la Ligue solo restent entièrement solo : ces « adversaires », ainsi que
+            l’intégralité du classement associé, sont générés et joués par une intelligence artificielle locale
+            exécutée directement sur votre appareil — pseudonymes, avatars, pays et statistiques y sont simulés et ne
+            correspondent à aucune personne réelle. Le mode « Duel en ligne » est différent : il vous met en relation
+            avec un vrai autre joueur humain, via un serveur en ligne (voir ci-dessous).
           </Text>
 
           <Text style={styles.heading}>Données collectées</Text>
           <Text style={styles.paragraph}>
-            Wizard Chest ne collecte, ne transmet et ne stocke aucune donnée personnelle sur un serveur distant.
-            L’application fonctionne entièrement hors ligne. Les seules informations enregistrées — votre pseudonyme
-            choisi, votre progression (Elo, division, XP), votre historique de parties et vos préférences — sont
-            stockées uniquement en local sur votre appareil (stockage applicatif privé) et ne sont jamais envoyées à
-            Wizard Chest, à ses développeurs, ni à un tiers.
+            Un compte (identifiant + mot de passe) est nécessaire pour jouer, y compris en solo — il est créé et géré
+            par notre fournisseur d’hébergement (Supabase), qui stocke votre identifiant et votre mot de passe (sous
+            forme chiffrée) sur ses serveurs. Le mode « Duel en ligne » et le système d’amis transmettent également
+            à ce même serveur les pseudonymes des joueurs, les demandes/liste d’amis, ainsi que l’état des parties en
+            ligne en cours (position, coups, sorts) le temps qu’elles se déroulent. Votre progression (Elo, division,
+            XP), votre historique de parties solo, votre photo de profil et vos préférences restent, elles, stockées
+            uniquement en local sur votre appareil.
           </Text>
 
-          <Text style={styles.heading}>Aucun compte requis</Text>
+          <Text style={styles.heading}>Compte</Text>
           <Text style={styles.paragraph}>
-            Aucune création de compte, aucune adresse e-mail, aucun numéro de téléphone n’est demandé pour jouer.
-            Le pseudonyme que vous choisissez est libre et ne doit pas contenir d’informations personnelles
-            identifiables.
+            L’identifiant que vous choisissez sert aussi de pseudonyme affiché aux autres joueurs (amis, adversaires
+            en duel en ligne) — ne l’utilisez pas s'il contient des informations personnelles identifiables. Le jeu
+            étant en développement, n’utilisez jamais un mot de passe que vous employez ailleurs.
           </Text>
 
           <Text style={styles.heading}>Permissions de l’appareil</Text>
@@ -58,13 +59,14 @@ export default function PrivacyScreen() {
 
           <Text style={styles.heading}>Suppression des données</Text>
           <Text style={styles.paragraph}>
-            Vous pouvez supprimer intégralement vos données locales à tout moment depuis Paramètres →
-            Réinitialiser la progression, ou en désinstallant l’application.
+            Vous pouvez supprimer vos données locales à tout moment depuis Paramètres → Réinitialiser la progression,
+            ou en désinstallant l’application. Pour la suppression de votre compte (identifiant, mot de passe, amis)
+            côté serveur, contactez l’éditeur (voir « Contact » ci-dessous).
           </Text>
 
           <Text style={styles.heading}>Achats intégrés</Text>
           <Text style={styles.paragraph}>
-            Cette version de Wizard Chest ne propose aucun achat intégré ni publicité. L’architecture du jeu est
+            Cette version de Wizard Chess ne propose aucun achat intégré ni publicité. L’architecture du jeu est
             préparée pour en accueillir dans une future mise à jour, mais aucun système payant n’est actif
             actuellement.
           </Text>

@@ -1,6 +1,6 @@
 export const en = {
   common: {
-    appName: 'Wizard Chest',
+    appName: 'Wizard Chess',
     play: 'Play',
     cancel: 'Cancel',
     confirm: 'Confirm',

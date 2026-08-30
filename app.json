@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Wizard Chest",
+    "name": "Wizard Chess",
     "slug": "wizard-chest",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -53,7 +53,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Wizard Chest a besoin d'accéder à vos photos pour définir votre photo de profil."
+          "photosPermission": "Wizard Chess a besoin d'accéder à vos photos pour définir votre photo de profil."
         }
       ]
     ],
