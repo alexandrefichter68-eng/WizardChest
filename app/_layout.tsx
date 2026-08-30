@@ -50,7 +50,7 @@ export default function RootLayout() {
   useEffect(() => {
     // The match screen drives its own "match" playlist (start track, then tavern tracks in
     // sequence for long games); every other screen loops the single menu track.
-    setMusicContext(pathname === '/game' ? 'match' : 'menu', musicEnabled, musicVolume);
+    setMusicContext(pathname === '/game' || pathname === '/online-game' ? 'match' : 'menu', musicEnabled, musicVolume);
   }, [musicEnabled, musicVolume, pathname]);
 
   return (

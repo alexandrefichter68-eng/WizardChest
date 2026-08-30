@@ -136,7 +136,7 @@ export const en = {
     shieldDescription: 'Makes an allied piece (not the king) immune to capture during the opponent\'s next turn.',
     leapName: 'Leap',
     leapDescription: 'The targeted allied piece (not the king) may, on its next move, jump over other pieces while keeping its normal movement pattern.',
-    celesteName: 'Celestial Leap',
+    celesteName: 'Celeste',
     celesteDescription: 'The targeted allied piece (not the king) jumps 2 squares backward (straight or diagonal) on its next move, onto an empty square only.',
     entraveName: 'Root',
     entraveDescription: 'Targets an enemy piece within attack range of one of your pieces: it can neither move nor capture on its next turn.',

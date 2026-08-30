@@ -136,7 +136,7 @@ export const fr = {
     shieldDescription: 'Rend une pièce alliée (hors roi) invulnérable aux captures pendant le prochain tour adverse.',
     leapName: 'Saut',
     leapDescription: 'La pièce alliée ciblée (hors roi) peut, lors de son prochain déplacement, sauter par-dessus les autres pièces en conservant son déplacement d’origine.',
-    celesteName: 'Saut céleste',
+    celesteName: 'Céleste',
     celesteDescription: 'La pièce alliée ciblée (hors roi) bondit de deux cases vers l’arrière (ligne droite ou diagonale) lors de son prochain déplacement, sur une case vide uniquement.',
     entraveName: 'Entrave',
     entraveDescription: 'Cible une pièce ennemie à portée d’attaque d’une de vos pièces : elle ne pourra ni bouger ni capturer au prochain tour adverse.',

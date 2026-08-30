@@ -83,6 +83,9 @@ interface ChessBoardProps {
   /** "Piège Invisible" squares (several can be active at once), shown translucent — only ever
    * passed for the caster's own view. */
   trapSquares?: Square[];
+  /** "Camouflage" (online PvP only): renders whatever piece sits on these squares as a pawn,
+   * regardless of its real type — purely visual, never passed to the disguised side's own view. */
+  disguisedSquares?: Square[];
   interactive: boolean;
   onSquareTap: (square: Square) => void;
   onPieceDrop: (from: Square, to: Square) => void;
@@ -102,6 +105,7 @@ export function ChessBoard({
   checkSquare,
   dangerSquares,
   trapSquares,
+  disguisedSquares,
   interactive,
   onSquareTap,
   onPieceDrop,
@@ -109,6 +113,7 @@ export function ChessBoard({
   const squareSize = size / 8;
   const pieces = useMemo(() => readPieces(fen), [fen]);
   const trapSquaresSet = useMemo(() => new Set(trapSquares ?? []), [trapSquares]);
+  const disguisedSquaresSet = useMemo(() => new Set(disguisedSquares ?? []), [disguisedSquares]);
   const legalTargetsSet = useMemo(() => new Set(legalTargets), [legalTargets]);
   const dangerSquaresSet = useMemo(() => new Set(dangerSquares ?? []), [dangerSquares]);
 
@@ -232,7 +237,7 @@ export function ChessBoard({
                       },
                     ]}
                   >
-                    {PIECE_GLYPHS[piece.type]}
+                    {PIECE_GLYPHS[disguisedSquaresSet.has(square) ? 'p' : piece.type]}
                   </Text>
                 )}
               </View>

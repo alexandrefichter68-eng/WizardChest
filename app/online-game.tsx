@@ -1,59 +1,387 @@
-import { Chess, type PieceSymbol, type Square } from 'chess.js';
+import { Chess, type Move, type PieceSymbol, type Square } from 'chess.js';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button } from '@/components/Button';
+import {
+  nextMatchTrack,
+  pauseMatchMusic,
+  previousMatchTrack,
+  resumeMatchMusic,
+  setMusicVolume,
+  useMatchMusicStatus,
+} from '@/audio/sounds';
+import { Avatar } from '@/components/Avatar';
+import { CapturedPieces } from '@/components/CapturedPieces';
 import { ChessBoard } from '@/components/ChessBoard';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import { GameOverPanel } from '@/components/GameOverPanel';
+import { LeftGamePanel, type ChatEntry, type GameLogEntry } from '@/components/LeftGamePanel';
 import { PromotionModal } from '@/components/PromotionModal';
+import { RightSpellPanel } from '@/components/RightSpellPanel';
+import { findKingSquare, getMissingPieces, isEnemyKingAttacked } from '@/engine/boardUtils';
+import { applyCelesteMove, getCelesteDestinations } from '@/engine/celesteMoves';
+import { applyLeapMove, getLeapDestinations } from '@/engine/leapMoves';
+import {
+  applyCorruption,
+  applyEchoOfThePast,
+  applyExplosion,
+  applyTeleport,
+  applyTeleportWithPromotion,
+  getBlastSquares,
+  getOrthogonalAdjacentSquares,
+  getTeleportPromotionSquare,
+  hasLineOfSight,
+  promoteEdgePawns,
+  resolveDestructionReactions,
+  wouldTeleportStrandPawn,
+  type DestructionReactionState,
+} from '@/engine/spellEffects';
+import { evaluateAchievements } from '@/domain/achievementRules';
 import { getBoardTheme, getPieceTheme } from '@/domain/cosmetics';
+import { getDivisionForElo } from '@/domain/divisions';
+import { CAPTURE_GOLD_VALUE, MAX_OWNED_SPELLS, getSpellDef, nextCheckGoldReward, type OwnedSpell, type SpellId } from '@/domain/spells';
+import { computeXpGain } from '@/domain/xp';
+import { useHaptics } from '@/hooks/useHaptics';
+import { useSfx } from '@/hooks/useSfx';
 import { supabase } from '@/lib/supabase';
+import { createAvatarForUsername } from '@/domain/avatar';
 import { useAuthStore } from '@/store/authStore';
+import { useHistoryStore } from '@/store/historyStore';
+import { useMatchStore } from '@/store/matchStore';
 import { useProfileStore } from '@/store/profileStore';
+import { useRewardsStore } from '@/store/rewardsStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { palette } from '@/theme/colors';
-import { minTouchTarget, spacing } from '@/theme/spacing';
+import { minTouchTarget, radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
+import type { GameEndReason, GameResultKind, PieceColor } from '@/types';
 
-interface LiveMatchRow {
-  id: string;
-  white_id: string;
-  black_id: string;
-  fen: string;
-  pgn: string;
-  status: 'active' | 'finished';
-  winner: 'white' | 'black' | 'draw' | null;
+const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
+const STANDARD_PIECE_VALUE: Record<PieceSymbol, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+function otherOf(color: PieceColor): PieceColor {
+  return color === 'w' ? 'b' : 'w';
 }
 
-interface Participants {
-  white: string;
-  black: string;
+interface ColorMap<T> {
+  w: T;
+  b: T;
+}
+
+interface BountyMark {
+  square: Square;
+  ownerColor: PieceColor;
 }
 
 /**
- * First real-time PvP screen — deliberately plain chess, no spells. Every spell effect in the
- * local `game.tsx` mutates the board directly and assumes a single trusted client; syncing that
- * safely between two independent clients over the network is its own project, scoped out here on
- * purpose so the realtime skeleton (matchmaking -> live board sync -> game end) ships and gets
- * verified first.
+ * The full shared state of an online spell match — everything the local single-player `game.tsx`
+ * keeps as separate `useState`s, restructured per-color since here BOTH sides can independently
+ * cast spells (locally, only the human ever does; the "AI" never does, so it never needed this).
+ * One player computes the next value of this whole object after their action and writes it to
+ * `live_matches.battle_state`; the other player's client receives it via Realtime and replaces its
+ * local copy wholesale — nobody ever recomputes the opponent's turn, only mirrors it.
  */
+interface OnlineBattleState {
+  fen: string;
+  gold: ColorMap<number>;
+  ownedSpells: ColorMap<OwnedSpell[]>;
+  hasCastSpellThisTurn: ColorMap<boolean>;
+  /** Two-phase: `shields[color]` is the protected square; `shieldArmed[color]` only flips true once
+   * the caster's own next move completes, so the window always covers exactly one full opponent
+   * turn (see `advanceTurnState`). Same pattern for `entraves`. */
+  shields: ColorMap<Square | null>;
+  shieldArmed: ColorMap<boolean>;
+  entraves: ColorMap<Square | null>;
+  entraveArmed: ColorMap<boolean>;
+  leapArmed: ColorMap<Square | null>;
+  celesteArmed: ColorMap<Square | null>;
+  resurrectionArmed: ColorMap<Square | null>;
+  trapSquares: Square[];
+  bounty: BountyMark | null;
+  boundPair: [Square, Square] | null;
+  /** Instant at cast (no arm-phase needed, no tracked square) — cleared after the disguised side's
+   * opponent gets their one turn to be fooled. */
+  camouflage: ColorMap<boolean>;
+  /** Instant at cast, targets the opponent — cleared after their next move. */
+  silenced: ColorMap<boolean>;
+  previousSquareMap: Partial<Record<Square, Square>>;
+  deadAllies: ColorMap<PieceSymbol[]>;
+  checksDelivered: ColorMap<number>;
+  gameLog: GameLogEntry[];
+  chat: ChatEntry[];
+  lastMove: { from: Square; to: Square } | null;
+  status: 'active' | 'finished';
+  winner: 'white' | 'black' | 'draw' | null;
+  endReason: GameEndReason | null;
+}
+
+function createInitialBattleState(): OnlineBattleState {
+  return {
+    fen: new Chess().fen(),
+    gold: { w: 0, b: 0 },
+    ownedSpells: { w: [], b: [] },
+    hasCastSpellThisTurn: { w: false, b: false },
+    shields: { w: null, b: null },
+    shieldArmed: { w: false, b: false },
+    entraves: { w: null, b: null },
+    entraveArmed: { w: false, b: false },
+    leapArmed: { w: null, b: null },
+    celesteArmed: { w: null, b: null },
+    resurrectionArmed: { w: null, b: null },
+    trapSquares: [],
+    bounty: null,
+    boundPair: null,
+    camouflage: { w: false, b: false },
+    silenced: { w: false, b: false },
+    previousSquareMap: {},
+    deadAllies: { w: [], b: [] },
+    checksDelivered: { w: 0, b: 0 },
+    gameLog: [],
+    chat: [],
+    lastMove: null,
+    status: 'active',
+    winner: null,
+    endReason: null,
+  };
+}
+
+function pushCapped<T>(list: T[], entry: T, max: number): T[] {
+  const next = [...list, entry];
+  return next.length > max ? next.slice(next.length - max) : next;
+}
+
+function invalidateStale(next: OnlineBattleState, affected: Square[]) {
+  (['w', 'b'] as PieceColor[]).forEach((c) => {
+    if (next.shields[c] && affected.includes(next.shields[c]!)) {
+      next.shields[c] = null;
+      next.shieldArmed[c] = false;
+    }
+    if (next.leapArmed[c] && affected.includes(next.leapArmed[c]!)) next.leapArmed[c] = null;
+    if (next.celesteArmed[c] && affected.includes(next.celesteArmed[c]!)) next.celesteArmed[c] = null;
+    if (next.resurrectionArmed[c] && affected.includes(next.resurrectionArmed[c]!)) next.resurrectionArmed[c] = null;
+    if (next.entraves[c] && affected.includes(next.entraves[c]!)) {
+      next.entraves[c] = null;
+      next.entraveArmed[c] = false;
+    }
+  });
+}
+
+function reactToDestructionState(next: OnlineBattleState, chess: Chess, destroyedSquares: Square[]): Square[] {
+  const state: DestructionReactionState = {
+    trapSquares: next.trapSquares,
+    bountyMarkedSquare: next.bounty?.square ?? null,
+    bountyMarkedByColor: next.bounty?.ownerColor ?? null,
+    boundPair: next.boundPair,
+  };
+  const reaction = resolveDestructionReactions(destroyedSquares, state);
+  for (const sq of reaction.extraDestroyedSquares) {
+    const victim = chess.get(sq);
+    if (!victim || victim.type === 'k') continue;
+    next.deadAllies[victim.color].push(victim.type);
+    chess.remove(sq);
+  }
+  if (reaction.goldStolenBy) {
+    const victim = otherOf(reaction.goldStolenBy);
+    next.gold[reaction.goldStolenBy] += next.gold[victim];
+    next.gold[victim] = 0;
+  }
+  if (reaction.consumedTrapSquares.length > 0) {
+    next.trapSquares = next.trapSquares.filter((sq) => !reaction.consumedTrapSquares.includes(sq));
+  }
+  if (reaction.bountyConsumed) next.bounty = null;
+  if (reaction.boundPairConsumed) next.boundPair = null;
+  return reaction.extraDestroyedSquares;
+}
+
+function triggerTrap(next: OnlineBattleState, chess: Chess, landedSquares: Square[]) {
+  const hit = landedSquares.filter((sq) => next.trapSquares.includes(sq));
+  if (hit.length === 0) return;
+  const destroyed: Square[] = [];
+  for (const sq of hit) {
+    const victim = chess.get(sq);
+    if (!victim || victim.type === 'k') continue;
+    next.deadAllies[victim.color].push(victim.type);
+    chess.remove(sq);
+    destroyed.push(sq);
+  }
+  if (destroyed.length === 0) return;
+  const extra = reactToDestructionState(next, chess, destroyed);
+  invalidateStale(next, [...destroyed, ...extra]);
+}
+
+/** Returns the gold reward if this spell just exposed the enemy king mid-turn, else null. */
+function applyGhostCheckIfAny(next: OnlineBattleState, chess: Chess, casterColor: PieceColor): number | null {
+  if (!isEnemyKingAttacked(chess, casterColor)) return null;
+  const reward = nextCheckGoldReward(next.checksDelivered[casterColor]);
+  next.checksDelivered[casterColor] += 1;
+  next.gold[casterColor] += reward;
+  return reward;
+}
+
+function markGameOverIfAny(next: OnlineBattleState, chess: Chess, moverColor: PieceColor) {
+  if (next.status === 'finished') return;
+  if (chess.isCheckmate()) {
+    next.status = 'finished';
+    next.winner = moverColor === 'w' ? 'white' : 'black';
+    next.endReason = 'checkmate';
+  } else if (chess.isStalemate()) {
+    next.status = 'finished';
+    next.winner = 'draw';
+    next.endReason = 'stalemate';
+  } else if (chess.isThreefoldRepetition()) {
+    next.status = 'finished';
+    next.winner = 'draw';
+    next.endReason = 'threefold_repetition';
+  } else if (chess.isInsufficientMaterial()) {
+    next.status = 'finished';
+    next.winner = 'draw';
+    next.endReason = 'insufficient_material';
+  } else if (chess.isDraw()) {
+    next.status = 'finished';
+    next.winner = 'draw';
+    next.endReason = 'fifty_move_rule';
+  }
+}
+
+/** Shared turn-boundary bookkeeping, run once by whoever just moved (normal move, leap, or céleste). */
+function advanceTurnState(next: OnlineBattleState, moverColor: PieceColor, from: Square, to: Square) {
+  const other = otherOf(moverColor);
+  const remap = (sq: Square | null) => (sq === from ? to : sq);
+  next.shields[moverColor] = remap(next.shields[moverColor]);
+
+  next.leapArmed[moverColor] = null;
+  next.celesteArmed[moverColor] = null;
+  next.resurrectionArmed[moverColor] = null;
+
+  if (next.shields[moverColor] && !next.shieldArmed[moverColor]) next.shieldArmed[moverColor] = true;
+  if (next.shields[other] && next.shieldArmed[other]) {
+    next.shields[other] = null;
+    next.shieldArmed[other] = false;
+  }
+  if (next.entraves[moverColor] && !next.entraveArmed[moverColor]) next.entraveArmed[moverColor] = true;
+  if (next.entraves[other] && next.entraveArmed[other]) {
+    next.entraves[other] = null;
+    next.entraveArmed[other] = false;
+  }
+  if (next.camouflage[other]) next.camouflage[other] = false;
+  if (next.silenced[moverColor]) next.silenced[moverColor] = false;
+
+  next.hasCastSpellThisTurn[other] = false;
+  next.ownedSpells[other] = next.ownedSpells[other].map((s) => (s.boughtThisTurn ? { ...s, boughtThisTurn: false } : s));
+}
+
+interface MoveParams {
+  from: Square;
+  to: Square;
+  capturedType: PieceSymbol | null;
+  isPromotion: boolean;
+  notation: string;
+  piece: PieceSymbol;
+}
+
+/** Mirrors `finishMoveEffects` from the local game, minus the fake-AI-economy branch — there's no
+ * AI here, each side always manages its own real gold/spells via this same function. */
+function applyMoveToState(prev: OnlineBattleState, chess: Chess, moverColor: PieceColor, params: MoveParams, moverName: string): OnlineBattleState {
+  const next: OnlineBattleState = structuredClone(prev);
+  next.previousSquareMap = { ...next.previousSquareMap, [params.to]: params.from };
+  next.lastMove = { from: params.from, to: params.to };
+  next.gameLog = pushCapped(next.gameLog, { id: `log-${Date.now()}-${Math.random()}`, text: `${moverName}: ${params.notation}` }, 200);
+
+  if (next.bounty?.square === params.from) next.bounty = { ...next.bounty, square: params.to };
+  if (next.boundPair) {
+    next.boundPair = [next.boundPair[0] === params.from ? params.to : next.boundPair[0], next.boundPair[1] === params.from ? params.to : next.boundPair[1]];
+  }
+  triggerTrap(next, chess, [params.to]);
+  next.fen = chess.fen();
+
+  const isMate = chess.isCheckmate();
+  const isCheck = chess.inCheck();
+
+  let goldGained = 0;
+  if (params.capturedType) goldGained += CAPTURE_GOLD_VALUE[params.capturedType];
+  if (isCheck && !isMate) {
+    goldGained += nextCheckGoldReward(next.checksDelivered[moverColor]);
+    next.checksDelivered[moverColor] += 1;
+  }
+  next.gold[moverColor] += goldGained;
+
+  if (next.resurrectionArmed[moverColor] === params.from && params.capturedType) {
+    const graveyard = next.deadAllies[moverColor];
+    if (graveyard.length > 0) {
+      const idx = Math.floor(Math.random() * graveyard.length);
+      const revivedType = graveyard[idx]!;
+      next.deadAllies[moverColor] = graveyard.filter((_, i) => i !== idx);
+      chess.put({ type: revivedType, color: moverColor }, params.from);
+      promoteEdgePawns(chess, [params.from]);
+      next.fen = chess.fen();
+    }
+  }
+
+  if (params.capturedType) next.deadAllies[otherOf(moverColor)].push(params.capturedType);
+  if (params.capturedType) {
+    const extra = reactToDestructionState(next, chess, [params.to]);
+    if (extra.length > 0) invalidateStale(next, extra);
+    next.fen = chess.fen();
+  }
+
+  advanceTurnState(next, moverColor, params.from, params.to);
+  markGameOverIfAny(next, chess, moverColor);
+  return next;
+}
+
 export default function OnlineGameScreen() {
   const { t } = useTranslation();
+  const haptics = useHaptics();
+  const playSfx = useSfx();
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
   const myId = useAuthStore((s) => s.session?.user.id);
-  const boardTheme = useProfileStore((s) => getBoardTheme(s.profile.activeBoardTheme));
-  const pieceTheme = useProfileStore((s) => getPieceTheme(s.profile.activePieceTheme));
 
-  const [match, setMatch] = useState<LiveMatchRow | null>(null);
-  const [participants, setParticipants] = useState<Participants | null>(null);
+  const profile = useProfileStore((s) => s.profile);
+  const applyGameResult = useProfileStore((s) => s.applyGameResult);
+  const addHistoryEntry = useHistoryStore((s) => s.addEntry);
+  const unlockAchievements = useRewardsStore((s) => s.unlockMany);
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const musicStatus = useMatchMusicStatus();
+  const boardTheme = getBoardTheme(profile.activeBoardTheme);
+  const pieceTheme = getPieceTheme(profile.activePieceTheme);
+
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [myColor, setMyColor] = useState<PieceColor | null>(null);
+  const [opponentName, setOpponentName] = useState<string>('…');
+  const [battle, setBattle] = useState<OnlineBattleState | null>(null);
+  const startedAtRef = useRef(Date.now());
+  const finalizedRef = useRef(false);
+  const lastAppliedNotifiedFen = useRef<string | null>(null);
+
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
-  const [promotionPending, setPromotionPending] = useState<{ from: Square; to: Square } | null>(null);
+  const [armedSpell, setArmedSpell] = useState<SpellId | null>(null);
+  const [spellCastTargets, setSpellCastTargets] = useState<Square[]>([]);
+  const [promotionPending, setPromotionPending] = useState<{ from: Square; to: Square; isTeleport?: boolean; isLeap?: boolean } | null>(null);
+  const [explosionPreviewSquares, setExplosionPreviewSquares] = useState<Square[]>([]);
+  const [isSpellResolving, setIsSpellResolving] = useState(false);
+  const [spellFeedbackMessage, setSpellFeedbackMessage] = useState<string | null>(null);
+  const [ghostCheckMessage, setGhostCheckMessage] = useState<string | null>(null);
   const [resignConfirmOpen, setResignConfirmOpen] = useState(false);
 
+  const pushBattle = useCallback(
+    (next: OnlineBattleState) => {
+      setBattle(next);
+      void supabase
+        .from('live_matches')
+        .update({ battle_state: next, fen: next.fen, status: next.status, winner: next.winner, updated_at: new Date().toISOString() })
+        .eq('id', matchId)
+        .then(({ error }) => {
+          if (error) console.error('[online-game] pushBattle failed', error);
+        });
+    },
+    [matchId],
+  );
+
   useEffect(() => {
-    if (!matchId) return;
+    if (!matchId || !myId) return;
     let cancelled = false;
 
     void supabase
@@ -67,19 +395,27 @@ export default function OnlineGameScreen() {
           setLoadError(t('onlineGame.loadError'));
           return;
         }
-        setMatch(data as LiveMatchRow);
-        const row = data as LiveMatchRow;
-        const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', [row.white_id, row.black_id]);
-        if (cancelled || !profiles) return;
-        const white = profiles.find((p) => p.id === row.white_id)?.username ?? '?';
-        const black = profiles.find((p) => p.id === row.black_id)?.username ?? '?';
-        setParticipants({ white, black });
+        const white = data.white_id === myId;
+        setMyColor(white ? 'w' : 'b');
+        const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', [data.white_id, data.black_id]);
+        const opponentId = white ? data.black_id : data.white_id;
+        const oppUsername = profiles?.find((p) => p.id === opponentId)?.username ?? '?';
+        if (!cancelled) setOpponentName(oppUsername);
+
+        if (data.battle_state) {
+          if (!cancelled) setBattle(data.battle_state as OnlineBattleState);
+        } else {
+          const initial = createInitialBattleState();
+          if (!cancelled) setBattle(initial);
+          await supabase.from('live_matches').update({ battle_state: initial }).eq('id', matchId).is('battle_state', null);
+        }
       });
 
     const channel = supabase
-      .channel(`live-match-${matchId}`)
+      .channel(`live-battle-${matchId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_matches', filter: `id=eq.${matchId}` }, (payload) => {
-        setMatch(payload.new as LiveMatchRow);
+        const row = payload.new as { battle_state: OnlineBattleState | null };
+        if (row.battle_state) setBattle(row.battle_state);
       })
       .subscribe();
 
@@ -87,100 +423,718 @@ export default function OnlineGameScreen() {
       cancelled = true;
       void supabase.removeChannel(channel);
     };
-  }, [matchId, t]);
+  }, [matchId, myId, t]);
 
-  const chess = useMemo(() => (match ? new Chess(match.fen) : null), [match]);
-  const myColor: 'w' | 'b' | null = match && myId ? (match.white_id === myId ? 'w' : 'b') : null;
-  const isMyTurn = !!(chess && myColor && match?.status === 'active' && chess.turn() === myColor);
+  // Feedback (sound/haptics/ghost-check banner) for whatever the *opponent* just did, derived by
+  // diffing against the last state we already reacted to — this client never re-runs the reducer
+  // for the opponent's move, so it can't know "capture vs check vs mate" from a function return;
+  // it infers it from the new board the same way a human would just by looking at it.
+  const prevBattleRef = useRef<OnlineBattleState | null>(null);
+  useEffect(() => {
+    if (!battle || !myColor) return;
+    const prev = prevBattleRef.current;
+    prevBattleRef.current = battle;
+    if (!prev || prev.fen === battle.fen) return;
+    if (lastAppliedNotifiedFen.current === battle.fen) return;
+    lastAppliedNotifiedFen.current = battle.fen;
+    const chess = new Chess(battle.fen);
+    const prevChess = new Chess(prev.fen);
+    const pieceCountNow = chess.board().flat().filter(Boolean).length;
+    const pieceCountBefore = prevChess.board().flat().filter(Boolean).length;
+    if (chess.isCheckmate()) {
+      playSfx('checkmate');
+      haptics.error();
+    } else if (chess.inCheck()) {
+      playSfx('check');
+      haptics.warning();
+    } else if (pieceCountNow < pieceCountBefore) {
+      playSfx('capture');
+      haptics.capture();
+    } else {
+      playSfx('move');
+      haptics.move();
+    }
+  }, [battle, myColor, playSfx, haptics]);
+
+  const otherColor = myColor ? otherOf(myColor) : null;
+  const chess = useMemo(() => (battle ? new Chess(battle.fen) : null), [battle]);
+
+  // Finalize once, whichever side we ended up on, the moment shared status flips to 'finished'.
+  useEffect(() => {
+    if (!battle || !myColor || !chess) return;
+    if (battle.status !== 'finished' || finalizedRef.current) return;
+    finalizedRef.current = true;
+
+    const result: GameResultKind = battle.winner === 'draw' ? 'draw' : battle.winner === (myColor === 'w' ? 'white' : 'black') ? 'win' : 'loss';
+    const opponentProfile = {
+      id: `online-${matchId}`,
+      username: opponentName,
+      countryCode: 'FR',
+      elo: profile.elo,
+      division: getDivisionForElo(profile.elo).id,
+      winRate: 0.5,
+      gamesPlayed: 0,
+      style: 'tactique' as const,
+      avatar: createAvatarForUsername(opponentName, `online-${matchId}`),
+      aiDepth: 0,
+      aiSkillNoise: 0,
+    };
+    const moveCount = chess.history().length;
+    const xp = computeXpGain({ result, endReason: battle.endReason ?? 'checkmate', winStreak: profile.winStreak + (result === 'win' ? 1 : 0), moveCount, opponentDivisionOrder: opponentProfile.division === profile.division ? 0 : 0 });
+    const outcome = applyGameResult({ result, opponentElo: opponentProfile.elo, xpGained: xp.total });
+    const newAchievements = unlockAchievements(
+      evaluateAchievements({
+        result,
+        endReason: battle.endReason ?? 'checkmate',
+        moveCount,
+        winStreakAfter: useProfileStore.getState().profile.winStreak,
+        gamesPlayedAfter: useProfileStore.getState().profile.gamesPlayed,
+        divisionAfter: useProfileStore.getState().profile.division,
+        divisionChangedUp: outcome.divisionChanged,
+        didPromotePawn: false,
+        checkmateDeliveredByKnight: false,
+      }),
+    );
+    const historyEntryId = `online-game-${Date.now()}`;
+    const durationMs = Date.now() - startedAtRef.current;
+    let pgn = '';
+    try {
+      pgn = chess.pgn();
+    } catch {
+      // Cosmetic only.
+    }
+    addHistoryEntry({
+      id: historyEntryId,
+      playedAt: startedAtRef.current,
+      durationMs,
+      result,
+      endReason: battle.endReason ?? 'checkmate',
+      playerColor: myColor,
+      opponent: opponentProfile,
+      eloBefore: outcome.eloBefore,
+      eloAfter: outcome.eloAfter,
+      xpGained: xp.total,
+      pgn,
+      finalFen: battle.fen,
+      moveCount,
+    });
+    useMatchStore.getState().setLastResult({
+      result,
+      endReason: battle.endReason ?? 'checkmate',
+      opponent: opponentProfile,
+      playerColor: myColor,
+      eloBefore: outcome.eloBefore,
+      eloAfter: outcome.eloAfter,
+      xp,
+      divisionChanged: outcome.divisionChanged,
+      leveledUp: outcome.leveledUp,
+      newAchievements,
+      pgn,
+      finalFen: battle.fen,
+      moveCount,
+      durationMs,
+      historyEntryId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battle?.status]);
+
+  const isMyTurn = !!(battle && chess && myColor && battle.status === 'active' && chess.turn() === myColor && !promotionPending && !isSpellResolving);
 
   const legalTargets = useMemo(() => {
-    if (!chess || !selectedSquare) return [];
+    if (!chess || !selectedSquare || armedSpell || !battle || !myColor) return [];
+    if (selectedSquare === battle.leapArmed[myColor]) return getLeapDestinations(chess, selectedSquare);
+    if (selectedSquare === battle.celesteArmed[myColor]) return getCelesteDestinations(chess, selectedSquare);
     return chess.moves({ square: selectedSquare, verbose: true }).map((m) => m.to);
-  }, [chess, selectedSquare]);
+  }, [chess, selectedSquare, armedSpell, battle, myColor]);
 
-  const commitMove = async (from: Square, to: Square, promotion?: PieceSymbol) => {
-    if (!match || !chess) return;
-    const next = new Chess(match.fen);
-    const move = next.move({ from, to, promotion });
-    if (!move) return;
-
-    let status: LiveMatchRow['status'] = match.status;
-    let winner: LiveMatchRow['winner'] = match.winner;
-    if (next.isGameOver()) {
-      status = 'finished';
-      winner = next.isCheckmate() ? (move.color === 'w' ? 'white' : 'black') : 'draw';
+  const spellHighlightTargets = useMemo(() => {
+    if (!armedSpell || !chess || !myColor || !otherColor || !battle) return [];
+    const squares: Square[] = [];
+    const board = chess.board();
+    for (let r = 0; r < 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        const cell = board[r]![f];
+        const square = `${FILES[f]}${8 - r}` as Square;
+        if (armedSpell === 'piege_invisible') {
+          if (!cell && !battle.trapSquares.includes(square)) squares.push(square);
+          continue;
+        }
+        if (!cell) continue;
+        if (armedSpell === 'explosion') {
+          if (cell.color === myColor && cell.type === 'p') squares.push(square);
+        } else if (armedSpell === 'entrave') {
+          if (cell.color === otherColor && cell.type !== 'k' && chess.isAttacked(square, myColor)) squares.push(square);
+        } else if (armedSpell === 'corruption') {
+          if (cell.color === otherColor && cell.type !== 'k' && getOrthogonalAdjacentSquares(square).some((sq) => chess.get(sq)?.color === myColor)) squares.push(square);
+        } else if (armedSpell === 'chasseur_de_prime') {
+          if (cell.color === otherColor && cell.type !== 'k') squares.push(square);
+        } else if (armedSpell === 'echo_du_passe') {
+          const previous = battle.previousSquareMap[square];
+          if (cell.type !== 'k' && previous && !chess.get(previous)) squares.push(square);
+        } else if (armedSpell === 'liaison_funeste') {
+          if (spellCastTargets.length === 0) {
+            if (cell.color === myColor && cell.type !== 'k') squares.push(square);
+          } else if (cell.color === otherColor && cell.type !== 'k' && hasLineOfSight(chess, spellCastTargets[0]!, square)) {
+            squares.push(square);
+          }
+        } else if (armedSpell === 'teleport') {
+          if (cell.color === myColor && cell.type !== 'k') squares.push(square);
+        } else {
+          if (cell.color === myColor && cell.type !== 'k') squares.push(square);
+        }
+      }
     }
+    return squares;
+  }, [armedSpell, chess, myColor, otherColor, battle, spellCastTargets]);
 
-    const updated: LiveMatchRow = { ...match, fen: next.fen(), pgn: next.pgn(), status, winner };
-    setMatch(updated);
-    await supabase
-      .from('live_matches')
-      .update({ fen: updated.fen, pgn: updated.pgn, status, winner, updated_at: new Date().toISOString() })
-      .eq('id', match.id);
+  const showSpellFeedback = (message: string) => {
+    setSpellFeedbackMessage(message);
+    setTimeout(() => setSpellFeedbackMessage(null), 1800);
+  };
+
+  const notifyGhostCheck = (reward: number) => {
+    setGhostCheckMessage(t('spell.ghostCheckMessage', { gold: reward }));
+    setTimeout(() => setGhostCheckMessage(null), 1800);
+  };
+
+  const commitMove = (from: Square, to: Square, promotion?: PieceSymbol) => {
+    if (!battle || !chess || !myColor) return;
+    const working = new Chess(battle.fen);
+    let result: Move | null = null;
+    try {
+      result = working.move({ from, to, promotion });
+    } catch {
+      return;
+    }
+    if (!result) return;
+    const next = applyMoveToState(
+      battle,
+      working,
+      myColor,
+      {
+        from: result.from,
+        to: result.to,
+        capturedType: (result.captured as PieceSymbol | undefined) ?? null,
+        isPromotion: Boolean(result.promotion),
+        piece: result.piece as PieceSymbol,
+        notation: result.san,
+      },
+      profile.username,
+    );
+    lastAppliedNotifiedFen.current = next.fen;
+    setSelectedSquare(null);
+    pushBattle(next);
   };
 
   const handleSquareTap = (square: Square) => {
-    if (!chess || !isMyTurn) return;
+    if (!chess || !myColor || !battle) return;
+    if (armedSpell) {
+      handleSpellTargetTap(square);
+      return;
+    }
+    if (!isMyTurn) return;
     if (selectedSquare && legalTargets.includes(square)) {
-      const piece = chess.get(selectedSquare);
-      const isPromotion = piece?.type === 'p' && (square[1] === '8' || square[1] === '1');
-      if (isPromotion) {
-        setPromotionPending({ from: selectedSquare, to: square });
-      } else {
-        void commitMove(selectedSquare, square);
-      }
+      const movingPiece = chess.get(selectedSquare);
+      const isLeapMove = selectedSquare === battle.leapArmed[myColor];
+      const isCelesteMove = selectedSquare === battle.celesteArmed[myColor];
+      const isPromotion = movingPiece?.type === 'p' && (square[1] === '8' || square[1] === '1');
+      if (isPromotion) setPromotionPending({ from: selectedSquare, to: square, isLeap: isLeapMove });
+      else if (isCelesteMove) applyCelesteMoveAndAdvance(selectedSquare, square);
+      else if (isLeapMove) applyLeapMoveAndAdvance(selectedSquare, square);
+      else commitMove(selectedSquare, square);
       setSelectedSquare(null);
       return;
     }
     const piece = chess.get(square);
-    if (piece && piece.color === myColor) {
-      setSelectedSquare(square);
-    } else {
-      setSelectedSquare(null);
-    }
+    if (piece && piece.color === myColor) setSelectedSquare(square);
+    else setSelectedSquare(null);
   };
 
   const handlePieceDrop = (from: Square, to: Square) => {
-    if (!chess || !isMyTurn) return;
+    if (!chess || !myColor || !battle || !isMyTurn || armedSpell) return;
     const piece = chess.get(from);
     if (!piece || piece.color !== myColor) return;
-    const legal = chess.moves({ square: from, verbose: true }).map((m) => m.to);
+    const isLeapMove = from === battle.leapArmed[myColor];
+    const isCelesteMove = from === battle.celesteArmed[myColor];
+    const legal = isLeapMove ? getLeapDestinations(chess, from) : isCelesteMove ? getCelesteDestinations(chess, from) : chess.moves({ square: from, verbose: true }).map((m) => m.to);
     if (!legal.includes(to)) return;
     const isPromotion = piece.type === 'p' && (to[1] === '8' || to[1] === '1');
-    if (isPromotion) setPromotionPending({ from, to });
-    else void commitMove(from, to);
+    if (isPromotion) setPromotionPending({ from, to, isLeap: isLeapMove });
+    else if (isCelesteMove) applyCelesteMoveAndAdvance(from, to);
+    else if (isLeapMove) applyLeapMoveAndAdvance(from, to);
+    else commitMove(from, to);
+  };
+
+  const applyLeapMoveAndAdvance = (from: Square, to: Square, promotion?: PieceSymbol) => {
+    if (!battle || !myColor) return;
+    const working = new Chess(battle.fen);
+    const promo = promotion && promotion !== 'p' && promotion !== 'k' ? (promotion as 'q' | 'r' | 'b' | 'n') : undefined;
+    const movedPiece = working.get(from)?.type ?? 'p';
+    const capturedBefore = working.get(to);
+    const { captured } = applyLeapMove(working, from, to, promo);
+    const next = applyMoveToState(
+      battle,
+      working,
+      myColor,
+      { from, to, capturedType: captured && capturedBefore ? capturedBefore.type : null, isPromotion: Boolean(promo), piece: promo ?? movedPiece, notation: `🐴 ${from} → ${to}` },
+      profile.username,
+    );
+    lastAppliedNotifiedFen.current = next.fen;
+    pushBattle(next);
+  };
+
+  const applyCelesteMoveAndAdvance = (from: Square, to: Square) => {
+    if (!battle || !myColor) return;
+    const working = new Chess(battle.fen);
+    const movedPiece = working.get(from)?.type ?? 'q';
+    applyCelesteMove(working, from, to);
+    const next = applyMoveToState(battle, working, myColor, { from, to, capturedType: null, isPromotion: false, piece: movedPiece, notation: `✨ ${from} → ${to}` }, profile.username);
+    lastAppliedNotifiedFen.current = next.fen;
+    pushBattle(next);
+  };
+
+  const finishTeleportResolution = (squareA: Square, squareB: Square) => {
+    if (!battle || !chess || !myColor) return;
+    const working = new Chess(battle.fen);
+    const next: OnlineBattleState = structuredClone(battle);
+    const remap = (sq: Square | null) => (sq === squareA ? squareB : sq === squareB ? squareA : sq);
+    (['w', 'b'] as PieceColor[]).forEach((c) => {
+      next.shields[c] = remap(next.shields[c]);
+      next.leapArmed[c] = remap(next.leapArmed[c]);
+      next.celesteArmed[c] = remap(next.celesteArmed[c]);
+      next.resurrectionArmed[c] = remap(next.resurrectionArmed[c]);
+      next.entraves[c] = remap(next.entraves[c]);
+    });
+    if (next.bounty) next.bounty = { ...next.bounty, square: remap(next.bounty.square)! };
+    if (next.boundPair) next.boundPair = [remap(next.boundPair[0])!, remap(next.boundPair[1])!];
+
+    next.ownedSpells[myColor] = removeOneSpell(next.ownedSpells[myColor], 'teleport');
+    next.hasCastSpellThisTurn[myColor] = true;
+    next.gameLog = pushCapped(next.gameLog, { id: `log-${Date.now()}-${Math.random()}`, text: t('game.logSpellCastBetween', { name: profile.username, spell: t(getSpellDef('teleport').nameKey), squareA, squareB }) }, 200);
+    triggerTrap(next, working, [squareA, squareB]);
+    next.fen = working.fen();
+    { const reward = applyGhostCheckIfAny(next, working, myColor); if (reward) notifyGhostCheck(reward); }
+    markGameOverIfAny(next, working, otherOf(myColor));
+    setArmedSpell(null);
+    setSpellCastTargets([]);
+    playSfx('spellTeleport');
+    haptics.success();
+    lastAppliedNotifiedFen.current = next.fen;
+    pushBattle(next);
+  };
+
+  function removeOneSpell(list: OwnedSpell[], spellId: SpellId): OwnedSpell[] {
+    const idx = list.findIndex((s) => s.spellId === spellId);
+    if (idx === -1) return list;
+    return [...list.slice(0, idx), ...list.slice(idx + 1)];
+  }
+
+  const handleSpellTargetTap = (square: Square) => {
+    if (!armedSpell || !battle || !chess || !myColor || !otherColor) return;
+    const piece = chess.get(square);
+    if (piece?.type === 'k') return;
+
+    const consumeAndLog = (next: OnlineBattleState, targets: Square[]) => {
+      next.ownedSpells[myColor] = removeOneSpell(next.ownedSpells[myColor], armedSpell);
+      next.hasCastSpellThisTurn[myColor] = true;
+      const spellName = t(getSpellDef(armedSpell).nameKey);
+      const text = targets.length === 0
+        ? t('game.logSpellCast', { name: profile.username, spell: spellName })
+        : targets.length === 1
+          ? t('game.logSpellCastOn', { name: profile.username, spell: spellName, square: targets[0] })
+          : t('game.logSpellCastBetween', { name: profile.username, spell: spellName, squareA: targets[0], squareB: targets[1] });
+      next.gameLog = pushCapped(next.gameLog, { id: `log-${Date.now()}-${Math.random()}`, text }, 200);
+      setArmedSpell(null);
+      setSpellCastTargets([]);
+    };
+
+    try {
+      runTap();
+    } catch (error) {
+      console.error('[online-game] spell cast failed', error);
+      setArmedSpell(null);
+      setSpellCastTargets([]);
+      setIsSpellResolving(false);
+      setExplosionPreviewSquares([]);
+      showSpellFeedback(t('spell.castFailed'));
+    }
+
+    function runTap() {
+      if (!battle || !chess || !myColor || !otherColor) return;
+      const working = new Chess(battle.fen);
+
+      if (armedSpell === 'explosion') {
+        if (!piece || piece.color !== myColor || piece.type !== 'p') return;
+        const blastSquares = getBlastSquares(square);
+        setExplosionPreviewSquares(blastSquares);
+        setIsSpellResolving(true);
+        const next: OnlineBattleState = structuredClone(battle);
+        consumeAndLog(next, [square]);
+        setTimeout(() => {
+          try {
+            for (const sq of blastSquares) {
+              const victim = working.get(sq);
+              if (victim && victim.type !== 'k') next.deadAllies[victim.color].push(victim.type);
+            }
+            const { destroyedSquares } = applyExplosion(working, square);
+            const extra = reactToDestructionState(next, working, destroyedSquares);
+            invalidateStale(next, [...destroyedSquares, ...extra]);
+            next.fen = working.fen();
+            { const reward = applyGhostCheckIfAny(next, working, myColor); if (reward) notifyGhostCheck(reward); }
+            markGameOverIfAny(next, working, otherColor);
+            playSfx('spellExplosion');
+            haptics.capture();
+            lastAppliedNotifiedFen.current = next.fen;
+            pushBattle(next);
+          } catch (error) {
+            console.error('[online-game] explosion resolution failed', error);
+            showSpellFeedback(t('spell.castFailed'));
+          } finally {
+            setExplosionPreviewSquares([]);
+            setIsSpellResolving(false);
+          }
+        }, 450);
+        return;
+      }
+
+      if (armedSpell === 'teleport') {
+        if (!piece || piece.color !== myColor || piece.type === 'k') return;
+        if (spellCastTargets.length === 0) {
+          setSpellCastTargets([square]);
+          return;
+        }
+        const first = spellCastTargets[0]!;
+        if (first === square) return;
+        if (wouldTeleportStrandPawn(working, first, square)) return;
+        const promotionSquare = getTeleportPromotionSquare(working, first, square);
+        if (promotionSquare) {
+          const pawnSquare = promotionSquare === first ? square : first;
+          setPromotionPending({ from: pawnSquare, to: promotionSquare, isTeleport: true });
+          setSpellCastTargets([first, square]);
+          return;
+        }
+        applyTeleport(working, first, square);
+        finishTeleportResolution(first, square);
+        return;
+      }
+
+      if (armedSpell === 'shield') {
+        if (!piece || piece.color !== myColor || piece.type === 'k') return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.shields[myColor] = square;
+        consumeAndLog(next, [square]);
+        playSfx('spellShield');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'leap') {
+        if (!piece || piece.color !== myColor || piece.type === 'k') return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.leapArmed[myColor] = square;
+        consumeAndLog(next, [square]);
+        playSfx('spellLeap');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'celeste') {
+        if (!piece || piece.color !== myColor || piece.type === 'k') return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.celesteArmed[myColor] = square;
+        consumeAndLog(next, [square]);
+        playSfx('spellLeap');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'resurrection') {
+        if (!piece || piece.color !== myColor || piece.type === 'k') return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.resurrectionArmed[myColor] = square;
+        consumeAndLog(next, [square]);
+        playSfx('spellShield');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'entrave') {
+        if (!piece || piece.color !== otherColor || piece.type === 'k') return;
+        if (!working.isAttacked(square, myColor)) return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.entraves[myColor] = square;
+        consumeAndLog(next, [square]);
+        playSfx('spellShield');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'corruption') {
+        if (!piece || piece.color !== otherColor || piece.type === 'k') return;
+        const isAdjacentToAlly = getOrthogonalAdjacentSquares(square).some((sq) => working.get(sq)?.color === myColor);
+        if (!isAdjacentToAlly) return;
+        applyCorruption(working, square, myColor);
+        const next: OnlineBattleState = structuredClone(battle);
+        invalidateStale(next, [square]);
+        consumeAndLog(next, [square]);
+        next.fen = working.fen();
+        { const reward = applyGhostCheckIfAny(next, working, myColor); if (reward) notifyGhostCheck(reward); }
+        markGameOverIfAny(next, working, otherColor);
+        playSfx('spellTeleport');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'prix_du_sang') {
+        if (!piece || piece.color !== myColor || piece.type === 'k') return;
+        const value = CAPTURE_GOLD_VALUE[piece.type];
+        working.remove(square);
+        const next: OnlineBattleState = structuredClone(battle);
+        const extra = reactToDestructionState(next, working, [square]);
+        invalidateStale(next, [square, ...extra]);
+        next.gold[myColor] += value;
+        consumeAndLog(next, [square]);
+        next.fen = working.fen();
+        { const reward = applyGhostCheckIfAny(next, working, myColor); if (reward) notifyGhostCheck(reward); }
+        markGameOverIfAny(next, working, otherColor);
+        playSfx('spellExplosion');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'piege_invisible') {
+        if (piece || battle.trapSquares.includes(square)) return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.trapSquares = [...next.trapSquares, square];
+        consumeAndLog(next, [square]);
+        playSfx('spellShield');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'echo_du_passe') {
+        if (!piece || piece.type === 'k') return;
+        const previous = battle.previousSquareMap[square];
+        if (!previous || working.get(previous)) return;
+        applyEchoOfThePast(working, square, previous);
+        const next: OnlineBattleState = structuredClone(battle);
+        invalidateStale(next, [square]);
+        consumeAndLog(next, [square]);
+        triggerTrap(next, working, [previous]);
+        next.fen = working.fen();
+        { const reward = applyGhostCheckIfAny(next, working, myColor); if (reward) notifyGhostCheck(reward); }
+        markGameOverIfAny(next, working, otherColor);
+        playSfx('spellTeleport');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'chasseur_de_prime') {
+        if (!piece || piece.color !== otherColor || piece.type === 'k') return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.bounty = { square, ownerColor: myColor };
+        consumeAndLog(next, [square]);
+        playSfx('spellShield');
+        haptics.success();
+        pushBattle(next);
+        return;
+      }
+
+      if (armedSpell === 'liaison_funeste') {
+        if (spellCastTargets.length === 0) {
+          if (!piece || piece.color !== myColor || piece.type === 'k') return;
+          setSpellCastTargets([square]);
+          return;
+        }
+        const allySquare = spellCastTargets[0]!;
+        if (!piece || piece.color !== otherColor || piece.type === 'k') return;
+        if (!hasLineOfSight(working, allySquare, square)) return;
+        const next: OnlineBattleState = structuredClone(battle);
+        next.boundPair = [allySquare, square];
+        consumeAndLog(next, [allySquare, square]);
+        playSfx('spellTeleport');
+        haptics.success();
+        pushBattle(next);
+      }
+    }
   };
 
   const handlePromotionSelect = (piece: PieceSymbol) => {
-    if (!promotionPending) return;
-    void commitMove(promotionPending.from, promotionPending.to, piece);
+    if (!promotionPending || !battle || !myColor) return;
+    if (promotionPending.isTeleport) {
+      const working = new Chess(battle.fen);
+      applyTeleportWithPromotion(working, promotionPending.from, promotionPending.to, piece as 'q' | 'r' | 'b' | 'n');
+      setPromotionPending(null);
+      finishTeleportResolutionAfterPromotion(working, promotionPending.from, promotionPending.to);
+      return;
+    }
+    if (promotionPending.isLeap) {
+      const { from, to } = promotionPending;
+      setPromotionPending(null);
+      applyLeapMoveAndAdvance(from, to, piece);
+      return;
+    }
+    commitMove(promotionPending.from, promotionPending.to, piece);
     setPromotionPending(null);
   };
 
-  const handleResign = async () => {
-    if (!match || !myColor) return;
+  const finishTeleportResolutionAfterPromotion = (working: Chess, squareA: Square, squareB: Square) => {
+    if (!battle || !myColor) return;
+    const next: OnlineBattleState = structuredClone(battle);
+    const remap = (sq: Square | null) => (sq === squareA ? squareB : sq === squareB ? squareA : sq);
+    (['w', 'b'] as PieceColor[]).forEach((c) => {
+      next.shields[c] = remap(next.shields[c]);
+      next.leapArmed[c] = remap(next.leapArmed[c]);
+      next.celesteArmed[c] = remap(next.celesteArmed[c]);
+      next.resurrectionArmed[c] = remap(next.resurrectionArmed[c]);
+      next.entraves[c] = remap(next.entraves[c]);
+    });
+    next.ownedSpells[myColor] = removeOneSpell(next.ownedSpells[myColor], 'teleport');
+    next.hasCastSpellThisTurn[myColor] = true;
+    setArmedSpell(null);
+    setSpellCastTargets([]);
+    triggerTrap(next, working, [squareA, squareB]);
+    next.fen = working.fen();
+    { const reward = applyGhostCheckIfAny(next, working, myColor); if (reward) notifyGhostCheck(reward); }
+    markGameOverIfAny(next, working, otherOf(myColor));
+    playSfx('spellTeleport');
+    haptics.success();
+    pushBattle(next);
+  };
+
+  const handleBuySpell = (spellId: SpellId) => {
+    if (!battle || !myColor) return;
+    const def = getSpellDef(spellId);
+    if (battle.gold[myColor] < def.cost) return;
+    if (battle.ownedSpells[myColor].some((s) => s.spellId === spellId)) return;
+    if (battle.ownedSpells[myColor].length >= MAX_OWNED_SPELLS) return;
+    const next: OnlineBattleState = structuredClone(battle);
+    next.gold[myColor] -= def.cost;
+    next.ownedSpells[myColor] = [...next.ownedSpells[myColor], { instanceId: `${spellId}-${Date.now()}-${Math.random()}`, spellId, boughtThisTurn: true }];
+    playSfx('spellBuy');
+    haptics.success();
+    pushBattle(next);
+  };
+
+  const handleInstantSpellCast = (spellId: SpellId) => {
+    if (!battle || !myColor || !otherColor) return;
+    const next: OnlineBattleState = structuredClone(battle);
+    const consume = (targets: Square[]) => {
+      next.ownedSpells[myColor] = removeOneSpell(next.ownedSpells[myColor], spellId);
+      next.hasCastSpellThisTurn[myColor] = true;
+      const spellName = t(getSpellDef(spellId).nameKey);
+      next.gameLog = pushCapped(next.gameLog, { id: `log-${Date.now()}-${Math.random()}`, text: t('game.logSpellCast', { name: profile.username, spell: spellName }) }, 200);
+    };
+    if (spellId === 'oeil_pour_oeil') {
+      consume([]);
+      next.gold = { w: 0, b: 0 };
+      playSfx('gold');
+      haptics.success();
+      pushBattle(next);
+      return;
+    }
+    if (spellId === 'camouflage') {
+      consume([]);
+      next.camouflage[myColor] = true;
+      playSfx('spellShield');
+      haptics.success();
+      pushBattle(next);
+      return;
+    }
+    if (spellId === 'silencium') {
+      consume([]);
+      next.silenced[otherColor] = true;
+      playSfx('spellShield');
+      haptics.success();
+      pushBattle(next);
+      return;
+    }
+    if (spellId === 'reflexion') {
+      showSpellFeedback(t('spell.nothingToReflect'));
+      return;
+    }
+  };
+
+  const handleArmSpell = (spellId: SpellId) => {
+    if (!battle || !myColor || !isMyTurn) return;
+    if (armedSpell === spellId) {
+      setArmedSpell(null);
+      setSpellCastTargets([]);
+      return;
+    }
+    if (battle.hasCastSpellThisTurn[myColor]) {
+      showSpellFeedback(t('spell.oneSpellPerTurn'));
+      return;
+    }
+    if (battle.ownedSpells[myColor].find((s) => s.spellId === spellId)?.boughtThisTurn) {
+      showSpellFeedback(t('spell.boughtThisTurnMessage'));
+      return;
+    }
+    if (battle.silenced[myColor]) {
+      showSpellFeedback(t('spell.silencedMessage'));
+      return;
+    }
+    if (getSpellDef(spellId).targetCount === 0) {
+      handleInstantSpellCast(spellId);
+      return;
+    }
+    setArmedSpell(spellId);
+    setSpellCastTargets([]);
+    setSelectedSquare(null);
+  };
+
+  const handleResign = () => {
+    if (!battle || !myColor) return;
     setResignConfirmOpen(false);
-    await supabase
-      .from('live_matches')
-      .update({ status: 'finished', winner: myColor === 'w' ? 'black' : 'white', updated_at: new Date().toISOString() })
-      .eq('id', match.id);
+    const next: OnlineBattleState = structuredClone(battle);
+    next.status = 'finished';
+    next.winner = otherOf(myColor) === 'w' ? 'white' : 'black';
+    next.endReason = 'resignation';
+    pushBattle(next);
+  };
+
+  const handleSendChat = (text: string) => {
+    if (!battle || !text.trim()) return;
+    const next: OnlineBattleState = structuredClone(battle);
+    next.chat = pushCapped(next.chat, { id: `chat-${Date.now()}-${Math.random()}`, from: 'player', text: `${profile.username}: ${text.trim()}` }, 100);
+    pushBattle(next);
   };
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const boardSize = Math.max(200, Math.min(windowWidth - spacing.md * 2, windowHeight * 0.6, 640));
+  const isCompact = windowWidth < 500;
+  const sidePanelWidth = isCompact
+    ? Math.round(Math.min(120, Math.max(84, windowWidth * 0.22)))
+    : Math.round(Math.min(300, Math.max(170, windowWidth * 0.19)));
+  const boardSize = useMemo(() => {
+    const rowGap = spacing.xs * 2;
+    const availableWidth = windowWidth - spacing.md * 2 - sidePanelWidth * 2 - rowGap;
+    const availableHeight = windowHeight * 0.68;
+    return Math.max(140, Math.min(availableWidth, availableHeight, 760));
+  }, [windowWidth, windowHeight, sidePanelWidth]);
 
   if (loadError) {
     return (
       <View style={styles.root}>
         <SafeAreaView style={styles.center}>
           <Text style={styles.errorText}>{loadError}</Text>
-          <Button label={t('common.back')} onPress={() => router.replace('/home')} style={{ marginTop: spacing.md }} />
+          <Pressable onPress={() => router.replace('/home')} style={styles.backToHome}>
+            <Text style={styles.backToHomeText}>{t('common.back')}</Text>
+          </Pressable>
         </SafeAreaView>
       </View>
     );
   }
 
-  if (!match || !chess || !myColor) {
+  if (!battle || !chess || !myColor || !otherColor) {
     return (
       <View style={styles.root}>
         <SafeAreaView style={styles.center}>
@@ -190,10 +1144,25 @@ export default function OnlineGameScreen() {
     );
   }
 
-  const whiteName = participants?.white ?? '…';
-  const blackName = participants?.black ?? '…';
-  const myName = myColor === 'w' ? whiteName : blackName;
-  const opponentName = myColor === 'w' ? blackName : whiteName;
+  const checkSquare = chess.inCheck() ? findKingSquare(chess, chess.turn()) : null;
+  const missingMine = getMissingPieces(chess, myColor);
+  const missingOpp = getMissingPieces(chess, otherColor);
+  const materialLost = (missing: PieceSymbol[]) => missing.reduce((sum, type) => sum + STANDARD_PIECE_VALUE[type], 0);
+  const myAdvantage = Math.max(0, materialLost(missingOpp) - materialLost(missingMine));
+  const oppAdvantage = Math.max(0, materialLost(missingMine) - materialLost(missingOpp));
+  const disguisedSquares = battle.camouflage[otherColor]
+    ? chess.board().flat().filter((c): c is NonNullable<typeof c> => !!c && c.color === otherColor && c.type !== 'p').map((c) => c.square)
+    : [];
+
+  const gameOverReasonLabel =
+    battle.status === 'finished'
+      ? battle.endReason === 'checkmate'
+        ? t(battle.winner === (myColor === 'w' ? 'white' : 'black') ? 'game.gameOverCheckmateWin' : 'game.gameOverCheckmateLoss')
+        : battle.endReason === 'resignation'
+          ? t('game.gameOverResignation')
+          : t('game.gameOverDraw')
+      : '';
+  const myResult: GameResultKind = battle.winner === 'draw' ? 'draw' : battle.winner === (myColor === 'w' ? 'white' : 'black') ? 'win' : 'loss';
 
   return (
     <View style={styles.root}>
@@ -206,125 +1175,150 @@ export default function OnlineGameScreen() {
           <View style={{ width: minTouchTarget }} />
         </View>
 
-        {match.status === 'finished' ? (
-          <View style={styles.resultBanner}>
-            <Text style={styles.resultText}>
-              {match.winner === 'draw'
-                ? t('onlineGame.draw')
-                : (match.winner === 'white' ? whiteName : blackName) === myName
-                  ? t('onlineGame.youWon')
-                  : t('onlineGame.youLost')}
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.turnText}>{isMyTurn ? t('onlineGame.yourTurn') : t('onlineGame.opponentTurn')}</Text>
-        )}
+        {ghostCheckMessage && <Text style={styles.ghostCheckText}>{ghostCheckMessage}</Text>}
+        {spellFeedbackMessage && <Text style={styles.spellFeedbackText}>{spellFeedbackMessage}</Text>}
 
-        <View style={styles.boardWrap}>
-          <ChessBoard
-            fen={match.fen}
-            orientation={myColor === 'w' ? 'white' : 'black'}
-            size={boardSize}
-            boardTheme={boardTheme}
-            pieceTheme={pieceTheme}
-            selectedSquare={selectedSquare}
-            legalTargets={legalTargets}
-            lastMove={null}
-            checkSquare={null}
-            interactive={isMyTurn}
-            onSquareTap={handleSquareTap}
-            onPieceDrop={handlePieceDrop}
+        <View style={styles.playerRow}>
+          <Avatar avatar={createAvatarForUsername(opponentName, `online-${matchId}`)} size={32} />
+          <View style={styles.playerNameCol}>
+            <Text style={styles.playerName}>{opponentName}</Text>
+            <CapturedPieces missingPieces={missingOpp} advantage={oppAdvantage} />
+          </View>
+          <Text style={styles.turnDot}>{otherColor === 'w' ? '♔' : '♚'}</Text>
+        </View>
+
+        <View style={styles.middleRow}>
+          <LeftGamePanel
+            width={sidePanelWidth}
+            messages={battle.chat}
+            onSend={handleSendChat}
+            musicEnabled={settings.musicEnabled}
+            musicVolume={settings.musicVolume}
+            onToggleMusic={(v) => updateSettings({ musicEnabled: v })}
+            onChangeVolume={(v) => {
+              updateSettings({ musicVolume: v });
+              setMusicVolume(v);
+            }}
+            isMusicPlaying={musicStatus.playing}
+            onToggleMusicPlayback={() => (musicStatus.playing ? pauseMatchMusic() : resumeMatchMusic())}
+            onNextTrack={nextMatchTrack}
+            onPrevTrack={previousMatchTrack}
+            logEntries={battle.gameLog}
+          />
+
+          <View style={styles.boardCol}>
+            <View style={{ width: boardSize }}>
+              <ChessBoard
+                fen={battle.fen}
+                orientation={myColor === 'w' ? 'white' : 'black'}
+                size={boardSize}
+                boardTheme={boardTheme}
+                pieceTheme={pieceTheme}
+                selectedSquare={armedSpell ? (spellCastTargets[0] ?? null) : selectedSquare}
+                legalTargets={armedSpell ? spellHighlightTargets : legalTargets}
+                lastMove={battle.lastMove}
+                checkSquare={checkSquare}
+                dangerSquares={explosionPreviewSquares}
+                trapSquares={battle.trapSquares}
+                disguisedSquares={disguisedSquares}
+                interactive={isMyTurn || !!armedSpell}
+                onSquareTap={handleSquareTap}
+                onPieceDrop={handlePieceDrop}
+              />
+            </View>
+            {armedSpell && (
+              <Pressable
+                onPress={() => {
+                  setArmedSpell(null);
+                  setSpellCastTargets([]);
+                }}
+                style={styles.cancelSpellButton}
+              >
+                <Text style={styles.cancelSpellText}>{t('common.cancel')}</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <RightSpellPanel
+            width={sidePanelWidth}
+            gold={battle.gold[myColor]}
+            ownedSpells={battle.ownedSpells[myColor]}
+            aiOwnedSpells={battle.ownedSpells[otherColor]}
+            armedSpell={armedSpell}
+            castingDisabled={battle.hasCastSpellThisTurn[myColor]}
+            onArm={handleArmSpell}
+            onBuy={handleBuySpell}
           />
         </View>
 
-        <Text style={styles.myNameText}>{myName}</Text>
+        <View style={styles.playerRow}>
+          <Avatar avatar={profile.avatar} photoUri={profile.photoUri} size={32} />
+          <View style={styles.playerNameCol}>
+            <Text style={styles.playerName}>{profile.username}</Text>
+            <CapturedPieces missingPieces={missingMine} advantage={myAdvantage} />
+          </View>
+          <Text style={styles.turnDot}>{myColor === 'w' ? '♔' : '♚'}</Text>
+        </View>
 
-        {match.status === 'active' && (
-          <Button label={t('onlineGame.resign')} variant="danger" onPress={() => setResignConfirmOpen(true)} style={styles.resignButton} />
+        {battle.status === 'active' && (
+          <Pressable onPress={() => setResignConfirmOpen(true)} style={styles.resignButton}>
+            <Text style={styles.resignText}>🏳 {t('game.resign')}</Text>
+          </Pressable>
         )}
       </SafeAreaView>
 
       <PromotionModal visible={!!promotionPending} color={myColor} pieceTheme={pieceTheme} onSelect={handlePromotionSelect} />
       <ConfirmModal
         visible={resignConfirmOpen}
-        title={t('onlineGame.resignConfirmTitle')}
-        body={t('onlineGame.resignConfirmBody')}
-        confirmLabel={t('onlineGame.resign')}
+        title={t('game.resignConfirmTitle')}
+        body={t('game.resignConfirmBody')}
+        confirmLabel={t('game.resign')}
         cancelLabel={t('common.cancel')}
         destructive
-        onConfirm={() => void handleResign()}
+        onConfirm={handleResign}
         onCancel={() => setResignConfirmOpen(false)}
+      />
+      <GameOverPanel
+        visible={battle.status === 'finished'}
+        result={myResult}
+        reasonLabel={gameOverReasonLabel}
+        onViewResult={() => router.replace('/result')}
+        onQuit={() => router.replace('/home')}
+        viewResultLabel={t('game.viewResult')}
+        quitLabel={t('common.close')}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: palette.voidBlack,
-  },
-  safeArea: {
-    flex: 1,
+  root: { flex: 1, backgroundColor: palette.voidBlack },
+  safeArea: { flex: 1, paddingHorizontal: spacing.md },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.xs },
+  backButton: { width: minTouchTarget, height: minTouchTarget, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 28, color: palette.ivory },
+  headerTitle: { fontFamily: fontFamily.display, fontSize: fontSize.lg, color: palette.ivory },
+  ghostCheckText: { color: palette.goldBright, fontWeight: '700', textAlign: 'center', fontSize: fontSize.sm },
+  spellFeedbackText: { color: palette.danger, fontWeight: '600', textAlign: 'center', fontSize: fontSize.sm },
+  playerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xxs },
+  playerNameCol: { flex: 1 },
+  playerName: { color: palette.ivory, fontWeight: '700', fontSize: fontSize.sm },
+  turnDot: { fontSize: fontSize.lg },
+  middleRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'flex-start', justifyContent: 'center' },
+  boardCol: { alignItems: 'center', gap: spacing.xs },
+  cancelSpellButton: {
+    backgroundColor: palette.stonePanelRaised,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.stoneBorder,
     paddingHorizontal: spacing.md,
-    alignItems: 'center',
+    paddingVertical: spacing.xxs,
   },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    width: '100%',
-  },
-  backButton: {
-    width: minTouchTarget,
-    height: minTouchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 28,
-    color: palette.ivory,
-  },
-  headerTitle: {
-    fontFamily: fontFamily.display,
-    fontSize: fontSize.lg,
-    color: palette.ivory,
-  },
-  turnText: {
-    color: palette.violetBright,
-    fontWeight: '700',
-    fontSize: fontSize.md,
-    marginBottom: spacing.sm,
-  },
-  resultBanner: {
-    marginBottom: spacing.sm,
-  },
-  resultText: {
-    color: palette.goldBright,
-    fontFamily: fontFamily.display,
-    fontSize: fontSize.xl,
-  },
-  boardWrap: {
-    marginVertical: spacing.sm,
-  },
-  myNameText: {
-    color: palette.ivoryMuted,
-    fontSize: fontSize.sm,
-    marginTop: spacing.xs,
-  },
-  resignButton: {
-    marginTop: spacing.md,
-  },
-  errorText: {
-    color: palette.danger,
-    fontSize: fontSize.md,
-    textAlign: 'center',
-    paddingHorizontal: spacing.lg,
-  },
+  cancelSpellText: { color: palette.ivory, fontWeight: '600', fontSize: fontSize.sm },
+  resignButton: { alignSelf: 'center', marginVertical: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, backgroundColor: palette.danger, borderRadius: radius.pill },
+  resignText: { color: palette.voidBlack, fontWeight: '700' },
+  errorText: { color: palette.danger, fontSize: fontSize.md, textAlign: 'center', paddingHorizontal: spacing.lg },
+  backToHome: { marginTop: spacing.md, alignSelf: 'center' },
+  backToHomeText: { color: palette.violetBright, fontWeight: '700' },
 });
