@@ -54,7 +54,7 @@ import { useProfileStore } from '@/store/profileStore';
 import { useRewardsStore } from '@/store/rewardsStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { palette } from '@/theme/colors';
-import { minTouchTarget, radius, spacing } from '@/theme/spacing';
+import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
 import type { GameEndReason, GameResultKind, PieceColor } from '@/types';
 
@@ -365,6 +365,7 @@ export default function OnlineGameScreen() {
   const [spellFeedbackMessage, setSpellFeedbackMessage] = useState<string | null>(null);
   const [ghostCheckMessage, setGhostCheckMessage] = useState<string | null>(null);
   const [resignConfirmOpen, setResignConfirmOpen] = useState(false);
+  const [flipped, setFlipped] = useState(false);
 
   const pushBattle = useCallback(
     (next: OnlineBattleState) => {
@@ -1164,28 +1165,33 @@ export default function OnlineGameScreen() {
       : '';
   const myResult: GameResultKind = battle.winner === 'draw' ? 'draw' : battle.winner === (myColor === 'w' ? 'white' : 'black') ? 'win' : 'loss';
 
+  // Same orientation logic as the local game screen — the settings-wide board-orientation
+  // preference applies here too, with the manual flip button overriding it for this match only.
+  const orientation: 'white' | 'black' = flipped
+    ? myColor === 'w' ? 'black' : 'white'
+    : settings.boardOrientation === 'black'
+      ? 'black'
+      : settings.boardOrientation === 'white'
+        ? 'white'
+        : myColor === 'w'
+          ? 'white'
+          : 'black';
+  const topColor: PieceColor = orientation === 'white' ? otherColor : myColor;
+  const bottomColor: PieceColor = orientation === 'white' ? myColor : otherColor;
+  const topIsOpponent = topColor !== myColor;
+
   return (
     <View style={styles.root}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.replace('/home')} accessibilityRole="button" accessibilityLabel={t('common.back')} style={styles.backButton}>
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.headerTitle}>{opponentName}</Text>
-          <View style={{ width: minTouchTarget }} />
-        </View>
-
-        {ghostCheckMessage && <Text style={styles.ghostCheckText}>{ghostCheckMessage}</Text>}
-        {spellFeedbackMessage && <Text style={styles.spellFeedbackText}>{spellFeedbackMessage}</Text>}
-
-        <View style={styles.playerRow}>
-          <Avatar avatar={createAvatarForUsername(opponentName, `online-${matchId}`)} size={32} />
-          <View style={styles.playerNameCol}>
-            <Text style={styles.playerName}>{opponentName}</Text>
-            <CapturedPieces missingPieces={missingOpp} advantage={oppAdvantage} />
-          </View>
-          <Text style={styles.turnDot}>{otherColor === 'w' ? '♔' : '♚'}</Text>
-        </View>
+        <PlayerBar
+          isOpponent={topIsOpponent}
+          opponentName={opponentName}
+          myProfile={profile}
+          color={topColor}
+          active={chess.turn() === topColor}
+          missingPieces={topColor === myColor ? missingMine : missingOpp}
+          advantage={topColor === myColor ? myAdvantage : oppAdvantage}
+        />
 
         <View style={styles.middleRow}>
           <LeftGamePanel
@@ -1206,37 +1212,58 @@ export default function OnlineGameScreen() {
             logEntries={battle.gameLog}
           />
 
-          <View style={styles.boardCol}>
-            <View style={{ width: boardSize }}>
-              <ChessBoard
-                fen={battle.fen}
-                orientation={myColor === 'w' ? 'white' : 'black'}
-                size={boardSize}
-                boardTheme={boardTheme}
-                pieceTheme={pieceTheme}
-                selectedSquare={armedSpell ? (spellCastTargets[0] ?? null) : selectedSquare}
-                legalTargets={armedSpell ? spellHighlightTargets : legalTargets}
-                lastMove={battle.lastMove}
-                checkSquare={checkSquare}
-                dangerSquares={explosionPreviewSquares}
-                trapSquares={battle.trapSquares}
-                disguisedSquares={disguisedSquares}
-                interactive={isMyTurn || !!armedSpell}
-                onSquareTap={handleSquareTap}
-                onPieceDrop={handlePieceDrop}
-              />
+          <View style={styles.center}>
+            <View style={[styles.boardStage, { width: boardSize, height: boardSize }]}>
+              <View style={styles.statusArea}>
+                {ghostCheckMessage && <Text style={styles.ghostCheckBanner}>{ghostCheckMessage}</Text>}
+                {chess.inCheck() && battle.status === 'active' && <Text style={styles.checkBanner}>{t('game.check')}</Text>}
+                {armedSpell && (
+                  <Text style={styles.statusText}>
+                    {armedSpell === 'explosion' && t('spell.chooseTargetPawn')}
+                    {armedSpell === 'teleport' && (spellCastTargets.length === 0 ? t('spell.chooseFirstAlly') : t('spell.chooseSecondAlly'))}
+                    {armedSpell === 'liaison_funeste' &&
+                      (spellCastTargets.length === 0 ? t('spell.chooseAllyTarget') : t('spell.chooseEnemyTarget'))}
+                    {(armedSpell === 'entrave' || armedSpell === 'corruption' || armedSpell === 'chasseur_de_prime') &&
+                      t('spell.chooseEnemyTarget')}
+                    {(armedSpell === 'shield' ||
+                      armedSpell === 'leap' ||
+                      armedSpell === 'celeste' ||
+                      armedSpell === 'resurrection' ||
+                      armedSpell === 'prix_du_sang') &&
+                      t('spell.chooseAllyTarget')}
+                    {armedSpell === 'piege_invisible' && t('spell.chooseEmptySquare')}
+                    {armedSpell === 'echo_du_passe' && t('spell.chooseEchoTarget')}
+                  </Text>
+                )}
+                {spellFeedbackMessage && <Text style={styles.statusText}>{spellFeedbackMessage}</Text>}
+              </View>
+
+              <View style={styles.boardWrap}>
+                <ChessBoard
+                  fen={battle.fen}
+                  orientation={orientation}
+                  size={boardSize}
+                  boardTheme={boardTheme}
+                  pieceTheme={pieceTheme}
+                  selectedSquare={armedSpell ? (spellCastTargets[0] ?? null) : selectedSquare}
+                  legalTargets={armedSpell ? spellHighlightTargets : legalTargets}
+                  lastMove={battle.lastMove}
+                  checkSquare={checkSquare}
+                  dangerSquares={explosionPreviewSquares}
+                  trapSquares={battle.trapSquares}
+                  disguisedSquares={disguisedSquares}
+                  interactive={isMyTurn || !!armedSpell}
+                  onSquareTap={handleSquareTap}
+                  onPieceDrop={handlePieceDrop}
+                />
+              </View>
+
+              {armedSpell && (
+                <Pressable onPress={() => handleArmSpell(armedSpell)} style={styles.cancelSpellButton}>
+                  <Text style={styles.cancelSpellLabel}>✕ {t('spell.cancelCast')}</Text>
+                </Pressable>
+              )}
             </View>
-            {armedSpell && (
-              <Pressable
-                onPress={() => {
-                  setArmedSpell(null);
-                  setSpellCastTargets([]);
-                }}
-                style={styles.cancelSpellButton}
-              >
-                <Text style={styles.cancelSpellText}>{t('common.cancel')}</Text>
-              </Pressable>
-            )}
           </View>
 
           <RightSpellPanel
@@ -1251,20 +1278,20 @@ export default function OnlineGameScreen() {
           />
         </View>
 
-        <View style={styles.playerRow}>
-          <Avatar avatar={profile.avatar} photoUri={profile.photoUri} size={32} />
-          <View style={styles.playerNameCol}>
-            <Text style={styles.playerName}>{profile.username}</Text>
-            <CapturedPieces missingPieces={missingMine} advantage={myAdvantage} />
-          </View>
-          <Text style={styles.turnDot}>{myColor === 'w' ? '♔' : '♚'}</Text>
-        </View>
+        <PlayerBar
+          isOpponent={!topIsOpponent}
+          opponentName={opponentName}
+          myProfile={profile}
+          color={bottomColor}
+          active={chess.turn() === bottomColor}
+          missingPieces={bottomColor === myColor ? missingMine : missingOpp}
+          advantage={bottomColor === myColor ? myAdvantage : oppAdvantage}
+        />
 
-        {battle.status === 'active' && (
-          <Pressable onPress={() => setResignConfirmOpen(true)} style={styles.resignButton}>
-            <Text style={styles.resignText}>🏳 {t('game.resign')}</Text>
-          </Pressable>
-        )}
+        <View style={styles.actionsRow}>
+          <ActionButton label={t('game.flipBoard')} icon="⇅" onPress={() => setFlipped((f) => !f)} />
+          <ActionButton label={t('game.resign')} icon="🏳" onPress={() => setResignConfirmOpen(true)} danger disabled={battle.status === 'finished'} />
+        </View>
       </SafeAreaView>
 
       <PromotionModal visible={!!promotionPending} color={myColor} pieceTheme={pieceTheme} onSelect={handlePromotionSelect} />
@@ -1291,33 +1318,151 @@ export default function OnlineGameScreen() {
   );
 }
 
+function PlayerBar({
+  isOpponent,
+  opponentName,
+  myProfile,
+  color,
+  active,
+  missingPieces,
+  advantage,
+}: {
+  isOpponent: boolean;
+  opponentName: string;
+  myProfile: { username: string; avatar: ReturnType<typeof createAvatarForUsername>; photoUri?: string };
+  color: PieceColor;
+  active: boolean;
+  missingPieces: PieceSymbol[];
+  advantage: number;
+}) {
+  return (
+    <View style={styles.playerBar}>
+      <View style={styles.playerInfo}>
+        {isOpponent ? (
+          <Avatar avatar={createAvatarForUsername(opponentName, opponentName)} size={36} />
+        ) : (
+          <Avatar avatar={myProfile.avatar} photoUri={myProfile.photoUri} size={36} />
+        )}
+        <View style={styles.playerNameCol}>
+          <Text style={styles.playerName} numberOfLines={1}>
+            {isOpponent ? opponentName : myProfile.username}
+          </Text>
+          <CapturedPieces missingPieces={missingPieces} advantage={advantage} />
+        </View>
+        <Text style={styles.playerColorDot}>{color === 'w' ? '♔' : '♚'}</Text>
+      </View>
+      <View style={[styles.clock, active && styles.clockActive]}>
+        <Text style={[styles.clockText, active && styles.clockTextActive]}>∞</Text>
+      </View>
+    </View>
+  );
+}
+
+function ActionButton({
+  label,
+  icon,
+  onPress,
+  danger,
+  disabled,
+}: {
+  label: string;
+  icon: string;
+  onPress: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [styles.actionButton, pressed && !disabled && styles.actionButtonPressed, disabled && styles.actionButtonDisabled]}
+    >
+      <Text style={[styles.actionIcon, danger && !disabled && { color: palette.danger }]}>{icon}</Text>
+      <Text style={styles.actionLabel} numberOfLines={1}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.voidBlack },
-  safeArea: { flex: 1, paddingHorizontal: spacing.md },
+  safeArea: { flex: 1, paddingHorizontal: spacing.md, gap: spacing.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.xs },
-  backButton: { width: minTouchTarget, height: minTouchTarget, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: palette.ivory },
-  headerTitle: { fontFamily: fontFamily.display, fontSize: fontSize.lg, color: palette.ivory },
-  ghostCheckText: { color: palette.goldBright, fontWeight: '700', textAlign: 'center', fontSize: fontSize.sm },
-  spellFeedbackText: { color: palette.danger, fontWeight: '600', textAlign: 'center', fontSize: fontSize.sm },
-  playerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xxs },
-  playerNameCol: { flex: 1 },
-  playerName: { color: palette.ivory, fontWeight: '700', fontSize: fontSize.sm },
-  turnDot: { fontSize: fontSize.lg },
-  middleRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'flex-start', justifyContent: 'center' },
-  boardCol: { alignItems: 'center', gap: spacing.xs },
+  middleRow: { flex: 1, flexDirection: 'row', gap: spacing.xs },
+  boardStage: { position: 'relative' },
+  statusArea: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    marginBottom: spacing.sm,
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  boardWrap: {
+    borderRadius: 6,
+    backgroundColor: palette.voidBlack,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  checkBanner: { color: palette.danger, fontFamily: fontFamily.display, fontSize: fontSize.lg },
+  ghostCheckBanner: { color: palette.goldBright, fontFamily: fontFamily.display, fontSize: fontSize.md },
+  statusText: { color: palette.ivoryMuted, fontSize: fontSize.sm, textAlign: 'center' },
   cancelSpellButton: {
-    backgroundColor: palette.stonePanelRaised,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: palette.stoneBorder,
-    paddingHorizontal: spacing.md,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '100%',
+    marginTop: spacing.sm,
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xxs,
   },
-  cancelSpellText: { color: palette.ivory, fontWeight: '600', fontSize: fontSize.sm },
-  resignButton: { alignSelf: 'center', marginVertical: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, backgroundColor: palette.danger, borderRadius: radius.pill },
-  resignText: { color: palette.voidBlack, fontWeight: '700' },
+  cancelSpellLabel: { color: palette.danger, fontSize: fontSize.sm, fontWeight: '600' },
+  playerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: palette.stonePanel,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.stoneBorder,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  playerInfo: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flex: 1 },
+  playerNameCol: { flexShrink: 1, gap: 1 },
+  playerName: { color: palette.ivory, fontWeight: '600', flexShrink: 1 },
+  playerColorDot: { color: palette.ivoryFaint, fontSize: fontSize.sm },
+  clock: {
+    backgroundColor: palette.stonePanelRaised,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    minWidth: 64,
+    alignItems: 'center',
+  },
+  clockActive: { backgroundColor: palette.gold },
+  clockText: { color: palette.ivory, fontFamily: fontFamily.mono, fontWeight: '700' },
+  clockTextActive: { color: palette.voidBlack },
+  actionsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: spacing.sm },
+  actionButton: { alignItems: 'center', gap: 2, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, minWidth: 80 },
+  actionButtonPressed: { opacity: 0.6 },
+  actionButtonDisabled: { opacity: 0.35 },
+  actionIcon: { fontSize: 22, color: palette.ivoryMuted },
+  actionLabel: { fontSize: fontSize.xs, color: palette.ivoryFaint },
   errorText: { color: palette.danger, fontSize: fontSize.md, textAlign: 'center', paddingHorizontal: spacing.lg },
   backToHome: { marginTop: spacing.md, alignSelf: 'center' },
   backToHomeText: { color: palette.violetBright, fontWeight: '700' },
