@@ -133,6 +133,8 @@ export default function HomeScreen() {
           <NavTile emoji="⚔️" label={t('home.adventure')} onPress={() => router.push('/adventure')} />
           <NavTile emoji="📖" label={t('home.spellbook')} onPress={() => router.push('/spellbook')} />
           <NavTile emoji="🥋" label={t('home.training')} onPress={handleTraining} />
+          <NavTile emoji="👥" label={t('home.friends')} onPress={() => router.push('/friends')} />
+          <NavTile emoji="🌐" label={t('home.onlineMatch')} onPress={() => router.push('/online-matchmaking')} />
           <NavTile emoji="🏆" label={t('home.leaderboard')} onPress={() => router.push('/leaderboard')} />
           <NavTile emoji="📜" label={t('home.history')} onPress={() => router.push('/history')} />
           <NavTile emoji="🎁" label={t('home.rewards')} onPress={() => router.push('/rewards')} />

@@ -33,7 +33,7 @@ export default function LaunchScreen() {
   const leaderboardHydrated = useLeaderboardStore((s) => s.hasHydrated);
   const rewardsHydrated = useRewardsStore((s) => s.hasHydrated);
   const authHydrated = useAuthStore((s) => s.hasHydrated);
-  const hasAccount = useAuthStore((s) => s.hasAccount);
+  const hasSession = useAuthStore((s) => s.session !== null);
   const ensureLeaderboardInitialized = useLeaderboardStore((s) => s.ensureInitialized);
   const refreshLeaderboardIfNeeded = useLeaderboardStore((s) => s.refreshIfNeeded);
 
@@ -64,10 +64,10 @@ export default function LaunchScreen() {
     refreshLeaderboardIfNeeded();
 
     const timer = setTimeout(() => {
-      router.replace(hasAccount ? '/home' : '/auth');
+      router.replace(hasSession ? '/home' : '/auth');
     }, MIN_DISPLAY_MS);
     return () => clearTimeout(timer);
-    // Only re-run once hydration completes; profile.elo/hasAccount read solely to seed the pool
+    // Only re-run once hydration completes; profile.elo/hasSession read solely to seed the pool
     // and pick the destination once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allHydrated]);

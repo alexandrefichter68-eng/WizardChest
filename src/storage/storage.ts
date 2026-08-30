@@ -4,7 +4,6 @@ const NAMESPACE = 'wizardchest';
 
 export const STORAGE_KEYS = {
   profile: `${NAMESPACE}:profile`,
-  auth: `${NAMESPACE}:auth`,
   settings: `${NAMESPACE}:settings`,
   history: `${NAMESPACE}:history`,
   leaderboard: `${NAMESPACE}:leaderboard`,

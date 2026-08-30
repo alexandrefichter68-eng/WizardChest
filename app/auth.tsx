@@ -19,17 +19,18 @@ type Tab = 'login' | 'signup';
 export default function AuthScreen() {
   const { t } = useTranslation();
   const profile = useProfileStore((s) => s.profile);
-  const setUsername = useProfileStore((s) => s.setUsername);
   const setProfilePhoto = useProfileStore((s) => s.setProfilePhoto);
-  const register = useAuthStore((s) => s.register);
+  const signUp = useAuthStore((s) => s.signUp);
+  const signIn = useAuthStore((s) => s.signIn);
 
   const [tab, setTab] = useState<Tab>('signup');
-  const [pseudo, setPseudo] = useState(profile.username);
-  const [login, setLogin] = useState('');
+  const [login, setLogin] = useState(profile.username);
   const [password, setPassword] = useState('');
   const [photoUri, setPhotoUri] = useState(profile.photoUri);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = tab === 'login' ? login.trim().length > 0 && password.length > 0 : pseudo.trim().length > 0 && login.trim().length > 0 && password.length > 0;
+  const canSubmit = login.trim().length > 0 && password.length > 0 && !submitting;
 
   const pickPhoto = async () => {
     await ImagePicker.requestMediaLibraryPermissionsAsync().catch(() => null);
@@ -46,15 +47,19 @@ export default function AuthScreen() {
     setPhotoUri(dataUri);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return;
-    if (tab === 'signup') {
-      setUsername(pseudo);
-      setProfilePhoto(photoUri ?? null);
-      register(login.trim(), password);
+    setSubmitting(true);
+    setError(null);
+    // Login and in-game display name are the same field on purpose — no separate "pseudo" input,
+    // one identity for the whole account. Real Supabase account either way — no more local mockup.
+    const failure = tab === 'signup' ? await signUp(login, password) : await signIn(login, password);
+    setSubmitting(false);
+    if (failure) {
+      setError(failure);
+      return;
     }
-    // Login has no real backend yet — it's a placeholder screen for the future multiplayer
-    // flow, so it never validates anything, it just proceeds (see the red warning below).
+    if (tab === 'signup') setProfilePhoto(photoUri ?? null);
     router.replace('/home');
   };
 
@@ -67,14 +72,14 @@ export default function AuthScreen() {
 
           <View style={styles.tabRow}>
             <Pressable
-              onPress={() => setTab('signup')}
+              onPress={() => { setTab('signup'); setError(null); }}
               accessibilityRole="button"
               style={[styles.tabButton, tab === 'signup' && styles.tabButtonActive]}
             >
               <Text style={[styles.tabLabel, tab === 'signup' && styles.tabLabelActive]}>{t('auth.signupTab')}</Text>
             </Pressable>
             <Pressable
-              onPress={() => setTab('login')}
+              onPress={() => { setTab('login'); setError(null); }}
               accessibilityRole="button"
               style={[styles.tabButton, tab === 'login' && styles.tabButtonActive]}
             >
@@ -84,29 +89,17 @@ export default function AuthScreen() {
 
           <Card style={styles.formCard}>
             {tab === 'signup' && (
-              <>
-                <Pressable onPress={pickPhoto} accessibilityRole="button" accessibilityLabel={t('auth.changePhoto')} style={styles.photoPicker}>
-                  <Avatar avatar={profile.avatar} photoUri={photoUri} size={84} />
-                  <Text style={styles.changePhotoLabel}>{t('auth.changePhoto')}</Text>
-                </Pressable>
-
-                <Text style={styles.fieldLabel}>{t('auth.pseudoLabel')}</Text>
-                <TextInput
-                  value={pseudo}
-                  onChangeText={setPseudo}
-                  maxLength={24}
-                  placeholder={t('auth.pseudoPlaceholder')}
-                  placeholderTextColor={palette.ivoryFaint}
-                  style={styles.input}
-                  accessibilityLabel={t('auth.pseudoLabel')}
-                />
-              </>
+              <Pressable onPress={pickPhoto} accessibilityRole="button" accessibilityLabel={t('auth.changePhoto')} style={styles.photoPicker}>
+                <Avatar avatar={profile.avatar} photoUri={photoUri} size={84} />
+                <Text style={styles.changePhotoLabel}>{t('auth.changePhoto')}</Text>
+              </Pressable>
             )}
 
             <Text style={styles.fieldLabel}>{t('auth.loginLabel')}</Text>
             <TextInput
               value={login}
               onChangeText={setLogin}
+              maxLength={24}
               autoCapitalize="none"
               autoCorrect={false}
               placeholder={t('auth.loginPlaceholder')}
@@ -130,10 +123,13 @@ export default function AuthScreen() {
 
             <Text style={styles.warning}>{t('auth.devPasswordWarning')}</Text>
 
+            {error && <Text style={styles.errorText}>{error}</Text>}
+
             <Button
               label={tab === 'signup' ? t('auth.signupButton') : t('auth.loginButton')}
-              onPress={handleSubmit}
+              onPress={() => void handleSubmit()}
               disabled={!canSubmit}
+              loading={submitting}
               style={styles.submitButton}
             />
           </Card>
@@ -229,6 +225,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  errorText: {
+    color: palette.danger,
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   submitButton: {
     marginTop: spacing.md,

@@ -1,40 +1,87 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
-import { STORAGE_KEYS } from '@/storage/storage';
+import { supabase } from '@/lib/supabase';
+import { useProfileStore } from '@/store/profileStore';
 
-interface AuthState {
-  hasAccount: boolean;
-  hasHydrated: boolean;
-  /**
-   * Stored in plain text on-device only — there is no server yet, "login" is a local mockup that
-   * never validates against these (see the in-app warning telling players never to use a real
-   * password). Kept purely so the multiplayer login screen has real fields to build on later.
-   */
-  login: string;
-  password: string;
-  setHasHydrated: (value: boolean) => void;
-  register: (login: string, password: string) => void;
-  clearAccount: () => void;
+// Supabase Auth is email/password only — there's no separate "username" login mode — so a real
+// account is created behind a synthesized address at this fake domain (never sent any mail, never
+// meant to be deliverable). Login/signup UI only ever shows the player their identifiant, never
+// this address. Keeps the account real (recognized across devices) without adding an email field
+// nobody asked for.
+const FAKE_EMAIL_DOMAIN = 'wizardchest.local';
+
+function emailForUsername(username: string): string {
+  return `${username.trim().toLowerCase()}@${FAKE_EMAIL_DOMAIN}`;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      hasAccount: false,
-      hasHydrated: false,
-      login: '',
-      password: '',
-      setHasHydrated: (value) => set({ hasHydrated: value }),
-      register: (login, password) => set({ hasAccount: true, login, password }),
-      clearAccount: () => set({ hasAccount: false, login: '', password: '' }),
-    }),
-    {
-      name: STORAGE_KEYS.auth,
-      storage: createJSONStorage(() => AsyncStorage),
-      onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
-      },
-    },
-  ),
-);
+interface AuthState {
+  session: Session | null;
+  hasHydrated: boolean;
+  signUp: (username: string, password: string) => Promise<string | null>;
+  signIn: (username: string, password: string) => Promise<string | null>;
+  signOut: () => Promise<void>;
+}
+
+function friendlyAuthError(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes('already registered') || lower.includes('already exists') || lower.includes('duplicate')) {
+    return 'Cet identifiant est déjà pris.';
+  }
+  if (lower.includes('invalid login credentials')) {
+    return 'Identifiant ou mot de passe incorrect.';
+  }
+  if (lower.includes('password') && lower.includes('character')) {
+    return 'Le mot de passe doit faire au moins 6 caractères.';
+  }
+  return message;
+}
+
+export const useAuthStore = create<AuthState>()((set) => ({
+  session: null,
+  hasHydrated: false,
+
+  signUp: async (username, password) => {
+    const trimmed = username.trim();
+    if (trimmed.length < 3) return 'Identifiant trop court (3 caractères minimum).';
+
+    const { data, error } = await supabase.auth.signUp({
+      email: emailForUsername(trimmed),
+      password,
+      options: { data: { username: trimmed } },
+    });
+    if (error) return friendlyAuthError(error.message);
+    if (!data.user) return 'Inscription impossible, réessaie.';
+
+    const { error: profileError } = await supabase.from('profiles').insert({ id: data.user.id, username: trimmed });
+    if (profileError) return friendlyAuthError(profileError.message);
+
+    useProfileStore.getState().setUsername(trimmed);
+    set({ session: data.session });
+    return null;
+  },
+
+  signIn: async (username, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: emailForUsername(username),
+      password,
+    });
+    if (error) return friendlyAuthError(error.message);
+    const sessionUsername = data.user?.user_metadata?.username;
+    if (typeof sessionUsername === 'string') useProfileStore.getState().setUsername(sessionUsername);
+    set({ session: data.session });
+    return null;
+  },
+
+  signOut: async () => {
+    await supabase.auth.signOut();
+    set({ session: null });
+  },
+}));
+
+void supabase.auth.getSession().then(({ data }) => {
+  useAuthStore.setState({ session: data.session, hasHydrated: true });
+});
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  useAuthStore.setState({ session });
+});

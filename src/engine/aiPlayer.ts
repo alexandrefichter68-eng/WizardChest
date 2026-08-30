@@ -1,6 +1,7 @@
 import { Chess, type Move, type Square } from 'chess.js';
 import { difficultyFromOpponent, pickMoveWithSkillNoise } from '@/engine/difficulty';
-import { findBestMove } from '@/engine/search';
+import { findBestMove, type SearchOptions } from '@/engine/search';
+import { findBestMoveInWorker, isSearchWorkerSupported } from '@/engine/searchWorkerClient';
 import { createSeededRng, randomFloat } from '@/utils/random';
 import type { PieceColor, PlayStyle } from '@/types';
 
@@ -39,16 +40,22 @@ function targetThinkingWindowMs(depth: number): [number, number] {
 }
 
 export async function computeAiMove(request: AiMoveRequest): Promise<AiMoveResponse> {
-  const chess = new Chess(request.fen);
   const difficulty = difficultyFromOpponent(request.aiDepth, request.aiSkillNoise, request.style);
   const startedAt = Date.now();
 
-  const result = await findBestMove(chess, {
+  const searchOptions: SearchOptions = {
     maxDepth: difficulty.maxDepth,
     timeBudgetMs: difficulty.timeBudgetMs,
     style: difficulty.style,
     disguisedColor: request.disguisedColor ?? null,
-  });
+  };
+
+  // The worker is the real fix for the main-thread freeze (see `searchWorkerClient.ts`) — falling
+  // back to the direct, main-thread search keeps native working (Metro's Worker support is
+  // web-only) and keeps web itself working even if the worker bundle fails to load for some reason.
+  const result = isSearchWorkerSupported()
+    ? await findBestMoveInWorker(request.fen, searchOptions).catch(() => findBestMove(new Chess(request.fen), searchOptions))
+    : await findBestMove(new Chess(request.fen), searchOptions);
 
   let eligibleMoveScores = request.protectedSquare
     ? result.rootMoveScores.filter((entry) => entry.move.to !== request.protectedSquare)

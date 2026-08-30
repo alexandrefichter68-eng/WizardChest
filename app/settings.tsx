@@ -8,6 +8,7 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { VolumeControl } from '@/components/VolumeControl';
 import { TIME_CONTROL_LABELS } from '@/domain/timeControls';
+import { useAuthStore } from '@/store/authStore';
 import { useHistoryStore } from '@/store/historyStore';
 import { useProfileStore } from '@/store/profileStore';
 import { useRewardsStore } from '@/store/rewardsStore';
@@ -43,6 +44,7 @@ export default function SettingsScreen() {
   const resetProgress = useProfileStore((s) => s.resetProgress);
   const clearHistory = useHistoryStore((s) => s.clearHistory);
   const resetRewards = useRewardsStore((s) => s.resetRewards);
+  const signOut = useAuthStore((s) => s.signOut);
 
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
@@ -69,6 +71,11 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace('/auth');
   };
 
   return (
@@ -136,6 +143,11 @@ export default function SettingsScreen() {
               value={settings.defaultTimeControl}
               onChange={(value) => updateSettings({ defaultTimeControl: value as TimeControlPreset })}
             />
+          </Card>
+
+          <SectionTitle label={t('settings.account')} />
+          <Card style={styles.card}>
+            <Button label={t('settings.signOut')} variant="secondary" onPress={() => void handleSignOut()} />
           </Card>
 
           <SectionTitle label={t('settings.about')} />
