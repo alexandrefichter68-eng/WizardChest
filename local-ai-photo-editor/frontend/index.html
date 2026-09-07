@@ -92,7 +92,29 @@
     </div>
 
     <div id="panelVideo" style="display:none">
-      <h2>Import</h2>
+      <h2>Animer une photo par IA</h2>
+      <div class="hint">
+        ⚠️ Limite importante : ce modèle local (Stable Video Diffusion) anime
+        la photo avec un <b>mouvement plausible</b> (léger mouvement de
+        caméra/scène). Il ne peut PAS suivre une action précise décrite en
+        texte (ex. "jouer au tennis") — aucune IA gratuite ne le fait
+        fiablement aujourd'hui. Sur ta RTX 2060 (6 Go), compte 3-8 min par
+        vidéo, en basse résolution/courte durée.
+      </div>
+      <button id="btnPickImageForVideo">Importer une photo à animer</button>
+      <input type="file" id="fileImageForVideo" accept="image/*" />
+      <img id="videoSourcePreview" style="max-width:100%;border-radius:8px;margin-top:8px;display:none" />
+      <div class="row">
+        <label>Intensité du mouvement (1-255)</label>
+        <input type="range" id="motionBucket" min="10" max="200" value="90" />
+      </div>
+      <div class="row">
+        <label>Nombre d'images (durée, 8-25)</label>
+        <input type="range" id="numFrames" min="8" max="25" value="14" />
+      </div>
+      <button id="btnGenerateVideo">🎬 Générer la vidéo</button>
+
+      <h2>Import direct d'une vidéo</h2>
       <button id="btnPickVideo">Importer une vidéo</button>
       <input type="file" id="fileVideo" accept="video/*" />
       <h2>Découpe</h2>
@@ -319,6 +341,40 @@ document.getElementById("btnDownload").onclick = () => {
   a.download = "photo-editee.png";
   a.href = canvas.toDataURL("image/png");
   a.click();
+};
+
+// ---- Image -> Video (IA) ----
+let videoSourceFile = null;
+document.getElementById("btnPickImageForVideo").onclick = () => document.getElementById("fileImageForVideo").click();
+document.getElementById("fileImageForVideo").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  videoSourceFile = f;
+  const preview = document.getElementById("videoSourcePreview");
+  preview.src = URL.createObjectURL(f);
+  preview.style.display = "block";
+};
+document.getElementById("btnGenerateVideo").onclick = async () => {
+  if (!videoSourceFile) return alert("Importe d'abord une photo à animer.");
+  const btn = document.getElementById("btnGenerateVideo");
+  btn.disabled = true; btn.textContent = "Génération en cours (peut prendre plusieurs minutes)…";
+  try {
+    const form = new FormData();
+    form.append("image", videoSourceFile);
+    form.append("motion", document.getElementById("motionBucket").value);
+    form.append("num_frames", document.getElementById("numFrames").value);
+    const res = await fetch(API + "/api/image-to-video", { method: "POST", body: form });
+    if (!res.ok) throw new Error(await res.text());
+    const { result_url } = await res.json();
+    lastVideoUrl = API + result_url;
+    videoPreview.style.display = "block";
+    videoPreview.src = lastVideoUrl + "?t=" + Date.now();
+    dropzone.style.display = "none";
+  } catch (err) {
+    alert("Erreur pendant la génération : " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "🎬 Générer la vidéo";
+  }
 };
 
 // ---- Video ----

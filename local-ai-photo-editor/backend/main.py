@@ -11,7 +11,8 @@ import uuid
 
 import ffmpeg
 import torch
-from diffusers import StableDiffusionInpaintPipeline
+from diffusers import StableDiffusionInpaintPipeline, StableVideoDiffusionPipeline
+from diffusers.utils import export_to_video
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -19,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageFilter, ImageOps
 
 MODEL_ID = os.environ.get("INPAINT_MODEL_ID", "stabilityai/stable-diffusion-2-inpainting")
+VIDEO_MODEL_ID = os.environ.get("VIDEO_MODEL_ID", "stabilityai/stable-video-diffusion-img2vid-xt")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 app = FastAPI(title="Local AI Photo Editor")
@@ -33,6 +35,7 @@ TMP_DIR = os.path.join(tempfile.gettempdir(), "local-ai-photo-editor")
 os.makedirs(TMP_DIR, exist_ok=True)
 
 _pipe = None
+_video_pipe = None
 
 
 def get_pipeline() -> StableDiffusionInpaintPipeline:
@@ -47,6 +50,27 @@ def get_pipeline() -> StableDiffusionInpaintPipeline:
     return _pipe
 
 
+def get_video_pipeline() -> StableVideoDiffusionPipeline:
+    """Charge le modèle image->vidéo une seule fois.
+
+    Optimisé pour un GPU à VRAM limitée (ex: 6 Go) : offloading CPU des
+    modules + slicing VAE, au prix de la vitesse.
+    """
+    global _video_pipe
+    if _video_pipe is None:
+        dtype = torch.float16 if DEVICE == "cuda" else torch.float32
+        _video_pipe = StableVideoDiffusionPipeline.from_pretrained(
+            VIDEO_MODEL_ID, torch_dtype=dtype, variant="fp16" if DEVICE == "cuda" else None
+        )
+        if DEVICE == "cuda":
+            _video_pipe.enable_model_cpu_offload()
+            _video_pipe.vae.enable_slicing()
+            _video_pipe.vae.enable_tiling()
+        else:
+            _video_pipe = _video_pipe.to(DEVICE)
+    return _video_pipe
+
+
 def _resize_for_model(img: Image.Image, size: int = 512) -> Image.Image:
     return img.convert("RGB").resize((size, size))
 
@@ -58,6 +82,8 @@ def status():
         "cuda_available": torch.cuda.is_available(),
         "model_id": MODEL_ID,
         "model_loaded": _pipe is not None,
+        "video_model_id": VIDEO_MODEL_ID,
+        "video_model_loaded": _video_pipe is not None,
     }
 
 
@@ -147,6 +173,50 @@ def get_video(name: str):
     if not os.path.isfile(path):
         return JSONResponse(status_code=404, content={"error": "not found"})
     return FileResponse(path, media_type="video/mp4")
+
+
+@app.post("/api/image-to-video")
+async def image_to_video(
+    image: UploadFile = File(...),
+    motion: int = Form(90),
+    num_frames: int = Form(14),
+    fps: int = Form(7),
+    resolution: int = Form(512),
+):
+    """Anime une photo importée (Stable Video Diffusion).
+
+    Important : ce modèle ne suit PAS une consigne textuelle d'action (il
+    n'existe pas d'équivalent gratuit fiable pour ça aujourd'hui). Il génère
+    un mouvement plausible (léger déplacement de caméra/scène) à partir de
+    l'image, réglable via `motion` (intensité) et `num_frames` (durée).
+    Réglages par défaut pensés pour tenir sur un GPU 6 Go de VRAM.
+    """
+    image_bytes = await image.read()
+    src = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+    # SVD attend des dimensions multiples de 64, et fonctionne en 1024x576 à
+    # l'origine ; on réduit fortement pour rester dans 6 Go de VRAM.
+    resolution = max(256, min(resolution, 576))
+    w = resolution - (resolution % 64)
+    h = int(w * 9 / 16)
+    h = h - (h % 64)
+    src = src.resize((w, h))
+
+    pipe = get_video_pipeline()
+    generator = torch.Generator(device="cpu").manual_seed(42)
+    frames = pipe(
+        src,
+        num_frames=min(max(num_frames, 8), 25),
+        motion_bucket_id=min(max(motion, 1), 255),
+        noise_aug_strength=0.02,
+        decode_chunk_size=2,
+        generator=generator,
+    ).frames[0]
+
+    out_name = f"{uuid.uuid4().hex}.mp4"
+    out_path = os.path.join(TMP_DIR, out_name)
+    export_to_video(frames, out_path, fps=fps)
+    return {"result_url": f"/api/video/{out_name}"}
 
 
 frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")

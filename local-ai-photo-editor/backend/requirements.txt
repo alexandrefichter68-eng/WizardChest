@@ -8,6 +8,8 @@ transformers==4.44.2
 accelerate==0.34.2
 safetensors==0.4.5
 ffmpeg-python==0.2.0
+imageio==2.35.1
+imageio-ffmpeg==0.5.1
 
 # Installe torch séparément avec la commande CUDA officielle, ex (CUDA 12.1):
 # pip install torch --index-url https://download.pytorch.org/whl/cu121
