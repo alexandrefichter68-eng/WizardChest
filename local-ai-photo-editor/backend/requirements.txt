@@ -1,0 +1,13 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+pillow==10.4.0
+numpy==1.26.4
+diffusers==0.30.3
+transformers==4.44.2
+accelerate==0.34.2
+safetensors==0.4.5
+ffmpeg-python==0.2.0
+
+# Installe torch séparément avec la commande CUDA officielle, ex (CUDA 12.1):
+# pip install torch --index-url https://download.pytorch.org/whl/cu121

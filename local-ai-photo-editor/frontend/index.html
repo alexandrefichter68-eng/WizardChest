@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Éditeur Photo/Vidéo IA Local</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, sans-serif; background: #0f1115; color: #eee;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header { padding: 12px 20px; background: #171a21; border-bottom: 1px solid #2a2f3a; display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  #status { font-size: 12px; color: #8a8f99; margin-left: auto; }
+  main { flex: 1; display: flex; overflow: hidden; }
+  aside { width: 260px; background: #12141a; border-right: 1px solid #2a2f3a; padding: 16px; overflow-y: auto; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #8a8f99; margin: 18px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  label { font-size: 12px; color: #c7cbd4; }
+  input[type=range] { width: 100%; }
+  button {
+    background: #2e63f6; color: #fff; border: none; border-radius: 8px;
+    padding: 9px 12px; font-size: 13px; cursor: pointer; width: 100%;
+  }
+  button.secondary { background: #262b36; color: #dfe3ea; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button + button { margin-top: 8px; }
+  .canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; background: repeating-conic-gradient(#1a1d24 0% 25%, #14161b 0% 50%) 50% / 20px 20px; overflow: auto; }
+  canvas { max-width: 100%; max-height: 100%; touch-action: none; cursor: crosshair; }
+  #dropzone {
+    border: 2px dashed #3a4050; border-radius: 12px; padding: 40px; text-align: center;
+    color: #8a8f99; font-size: 14px; max-width: 420px;
+  }
+  #dropzone.drag { border-color: #2e63f6; color: #fff; }
+  input[type=file] { display: none; }
+  .tabbar { display: flex; gap: 4px; margin-bottom: 12px; }
+  .tabbar button { flex: 1; padding: 8px; }
+  .tabbar button.active { background: #2e63f6; }
+  .tabbar button:not(.active) { background: #1d2129; color: #9aa0ab; }
+  .hint { font-size: 11px; color: #6b7280; line-height: 1.5; }
+  video { max-width: 100%; max-height: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🪄 Éditeur Photo/Vidéo IA — Local</h1>
+  <div id="status">connexion au serveur…</div>
+</header>
+<main>
+  <aside>
+    <div class="tabbar">
+      <button id="tabPhoto" class="active">Photo</button>
+      <button id="tabVideo">Vidéo</button>
+    </div>
+
+    <div id="panelPhoto">
+      <h2>Import</h2>
+      <button id="btnPickImage">Importer une photo</button>
+      <input type="file" id="fileImage" accept="image/*" />
+
+      <h2>Retouches classiques</h2>
+      <div class="row">
+        <label>Luminosité</label>
+        <input type="range" id="brightness" min="50" max="150" value="100" />
+      </div>
+      <div class="row">
+        <label>Contraste</label>
+        <input type="range" id="contrast" min="50" max="150" value="100" />
+      </div>
+      <div class="row">
+        <label>Saturation</label>
+        <input type="range" id="saturate" min="0" max="200" value="100" />
+      </div>
+      <button id="btnRotate" class="secondary">Rotation 90°</button>
+
+      <h2>Suppression d'objet par IA</h2>
+      <div class="hint">Peins en rouge la zone à effacer (ex: la casquette), puis lance la génération. L'IA reconstruit la zone pour qu'elle se fonde dans la photo.</div>
+      <div class="row">
+        <label>Taille du pinceau</label>
+        <input type="range" id="brushSize" min="5" max="80" value="30" />
+      </div>
+      <button id="btnMaskMode" class="secondary">✏️ Activer le pinceau</button>
+      <button id="btnClearMask" class="secondary">Effacer le masque</button>
+      <div class="row">
+        <label>Décrire le résultat attendu (optionnel)</label>
+        <input type="text" id="prompt" placeholder="peau naturelle, cheveux détaillés" style="padding:6px;border-radius:6px;border:1px solid #333;background:#1a1d24;color:#eee" />
+      </div>
+      <button id="btnGenerate">✨ Générer (retire l'objet)</button>
+      <button id="btnDownload" class="secondary">Télécharger le résultat</button>
+    </div>
+
+    <div id="panelVideo" style="display:none">
+      <h2>Import</h2>
+      <button id="btnPickVideo">Importer une vidéo</button>
+      <input type="file" id="fileVideo" accept="video/*" />
+      <h2>Découpe</h2>
+      <div class="row">
+        <label>Début (s)</label>
+        <input type="number" id="vidStart" value="0" min="0" step="0.1" />
+      </div>
+      <div class="row">
+        <label>Fin (s)</label>
+        <input type="number" id="vidEnd" value="5" min="0" step="0.1" />
+      </div>
+      <button id="btnTrim">Découper</button>
+      <button id="btnDownloadVideo" class="secondary">Télécharger le résultat</button>
+    </div>
+  </aside>
+
+  <div class="canvas-wrap">
+    <div id="dropzone">Glisse une photo ici, ou clique sur "Importer une photo"</div>
+    <canvas id="canvas" style="display:none"></canvas>
+    <video id="videoPreview" style="display:none" controls></video>
+  </div>
+</main>
+
+<script>
+const API = "";
+const statusEl = document.getElementById("status");
+fetch(API + "/api/status").then(r => r.json()).then(s => {
+  statusEl.textContent = `GPU: ${s.cuda_available ? "OK (CUDA)" : "non détecté (CPU, sera lent)"} · modèle: ${s.model_id}`;
+}).catch(() => statusEl.textContent = "serveur non joignable — lance backend/main.py");
+
+// ---- Tabs ----
+const tabPhoto = document.getElementById("tabPhoto");
+const tabVideo = document.getElementById("tabVideo");
+const panelPhoto = document.getElementById("panelPhoto");
+const panelVideo = document.getElementById("panelVideo");
+const canvas = document.getElementById("canvas");
+const videoPreview = document.getElementById("videoPreview");
+const dropzone = document.getElementById("dropzone");
+
+function showPhoto() {
+  tabPhoto.classList.add("active"); tabVideo.classList.remove("active");
+  panelPhoto.style.display = "block"; panelVideo.style.display = "none";
+  videoPreview.style.display = "none";
+  if (baseImage) canvas.style.display = "block"; else dropzone.style.display = "block";
+}
+function showVideo() {
+  tabVideo.classList.add("active"); tabPhoto.classList.remove("active");
+  panelVideo.style.display = "block"; panelPhoto.style.display = "none";
+  canvas.style.display = "none";
+  if (videoFile) videoPreview.style.display = "block"; else dropzone.style.display = "block";
+}
+tabPhoto.onclick = showPhoto;
+tabVideo.onclick = showVideo;
+
+// ---- Photo import ----
+const ctx = canvas.getContext("2d");
+let baseImage = null;   // Image object
+let maskCanvas = document.createElement("canvas");
+let maskCtx = maskCanvas.getContext("2d");
+let maskMode = false;
+
+document.getElementById("btnPickImage").onclick = () => document.getElementById("fileImage").click();
+document.getElementById("fileImage").onchange = e => loadImageFile(e.target.files[0]);
+
+["dragover", "dragleave", "drop"].forEach(evt => {
+  dropzone.addEventListener(evt, e => e.preventDefault());
+});
+dropzone.addEventListener("dragover", () => dropzone.classList.add("drag"));
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+dropzone.addEventListener("drop", e => {
+  dropzone.classList.remove("drag");
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  if (f.type.startsWith("video/")) { loadVideoFile(f); showVideo(); }
+  else { loadImageFile(f); showPhoto(); }
+});
+
+function loadImageFile(file) {
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    baseImage = img;
+    canvas.width = img.width;
+    canvas.height = img.height;
+    maskCanvas.width = img.width;
+    maskCanvas.height = img.height;
+    maskCtx.clearRect(0, 0, img.width, img.height);
+    dropzone.style.display = "none";
+    canvas.style.display = "block";
+    redraw();
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+function redraw() {
+  if (!baseImage) return;
+  const b = document.getElementById("brightness").value;
+  const c = document.getElementById("contrast").value;
+  const s = document.getElementById("saturate").value;
+  ctx.filter = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(baseImage, 0, 0);
+  ctx.filter = "none";
+  if (maskMode) {
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(maskCanvas, 0, 0);
+    ctx.restore();
+  }
+}
+["brightness", "contrast", "saturate"].forEach(id =>
+  document.getElementById(id).addEventListener("input", redraw)
+);
+
+document.getElementById("btnRotate").onclick = () => {
+  if (!baseImage) return;
+  const off = document.createElement("canvas");
+  off.width = canvas.height; off.height = canvas.width;
+  const octx = off.getContext("2d");
+  octx.translate(off.width / 2, off.height / 2);
+  octx.rotate(Math.PI / 2);
+  octx.drawImage(baseImage, -canvas.width / 2, -canvas.height / 2);
+  const rotated = new Image();
+  rotated.onload = () => {
+    baseImage = rotated;
+    canvas.width = off.width; canvas.height = off.height;
+    maskCanvas.width = off.width; maskCanvas.height = off.height;
+    maskCtx.clearRect(0, 0, off.width, off.height);
+    redraw();
+  };
+  rotated.src = off.toDataURL();
+};
+
+// ---- Mask painting ----
+const btnMaskMode = document.getElementById("btnMaskMode");
+btnMaskMode.onclick = () => {
+  maskMode = !maskMode;
+  btnMaskMode.textContent = maskMode ? "✅ Pinceau actif (clic pour arrêter)" : "✏️ Activer le pinceau";
+  redraw();
+};
+document.getElementById("btnClearMask").onclick = () => {
+  maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+  redraw();
+};
+
+let painting = false;
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const p = e.touches ? e.touches[0] : e;
+  return { x: (p.clientX - rect.left) * scaleX, y: (p.clientY - rect.top) * scaleY };
+}
+function paintAt(pos) {
+  const size = Number(document.getElementById("brushSize").value);
+  maskCtx.fillStyle = "red";
+  maskCtx.beginPath();
+  maskCtx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+  maskCtx.fill();
+  redraw();
+}
+canvas.addEventListener("mousedown", e => { if (maskMode) { painting = true; paintAt(canvasPos(e)); } });
+canvas.addEventListener("mousemove", e => { if (maskMode && painting) paintAt(canvasPos(e)); });
+window.addEventListener("mouseup", () => painting = false);
+canvas.addEventListener("touchstart", e => { if (maskMode) { painting = true; paintAt(canvasPos(e)); e.preventDefault(); } });
+canvas.addEventListener("touchmove", e => { if (maskMode && painting) { paintAt(canvasPos(e)); e.preventDefault(); } });
+canvas.addEventListener("touchend", () => painting = false);
+
+// ---- AI generate ----
+let lastResultUrl = null;
+document.getElementById("btnGenerate").onclick = async () => {
+  if (!baseImage) return alert("Importe d'abord une photo.");
+  const btn = document.getElementById("btnGenerate");
+  btn.disabled = true; btn.textContent = "Génération en cours (peut prendre 10-60s)…";
+  try {
+    const imgBlob = await new Promise(res => canvas.toBlob(res, "image/png"));
+    // export du masque en noir/blanc (pas de la superposition semi-transparente)
+    const bwMask = document.createElement("canvas");
+    bwMask.width = maskCanvas.width; bwMask.height = maskCanvas.height;
+    const bwCtx = bwMask.getContext("2d");
+    bwCtx.drawImage(maskCanvas, 0, 0);
+    const data = bwCtx.getImageData(0, 0, bwMask.width, bwMask.height);
+    for (let i = 0; i < data.data.length; i += 4) {
+      const painted = data.data[i + 3] > 0;
+      const v = painted ? 255 : 0;
+      data.data[i] = data.data[i + 1] = data.data[i + 2] = v;
+      data.data[i + 3] = 255;
+    }
+    bwCtx.putImageData(data, 0, 0);
+    const maskBlob = await new Promise(res => bwMask.toBlob(res, "image/png"));
+
+    // image de base SANS le filtre ni l'overlay du masque
+    const clean = document.createElement("canvas");
+    clean.width = canvas.width; clean.height = canvas.height;
+    clean.getContext("2d").drawImage(baseImage, 0, 0);
+    const cleanBlob = await new Promise(res => clean.toBlob(res, "image/png"));
+
+    const form = new FormData();
+    form.append("image", cleanBlob, "image.png");
+    form.append("mask", maskBlob, "mask.png");
+    const prompt = document.getElementById("prompt").value;
+    if (prompt) form.append("prompt", prompt);
+
+    const res = await fetch(API + "/api/inpaint", { method: "POST", body: form });
+    if (!res.ok) throw new Error(await res.text());
+    const { result_url } = await res.json();
+    lastResultUrl = API + result_url;
+    const resultImg = new Image();
+    resultImg.onload = () => {
+      baseImage = resultImg;
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+      redraw();
+    };
+    resultImg.src = lastResultUrl + "?t=" + Date.now();
+  } catch (err) {
+    alert("Erreur pendant la génération : " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "✨ Générer (retire l'objet)";
+  }
+};
+
+document.getElementById("btnDownload").onclick = () => {
+  const a = document.createElement("a");
+  a.download = "photo-editee.png";
+  a.href = canvas.toDataURL("image/png");
+  a.click();
+};
+
+// ---- Video ----
+let videoFile = null;
+let lastVideoUrl = null;
+document.getElementById("btnPickVideo").onclick = () => document.getElementById("fileVideo").click();
+document.getElementById("fileVideo").onchange = e => loadVideoFile(e.target.files[0]);
+function loadVideoFile(file) {
+  if (!file) return;
+  videoFile = file;
+  videoPreview.src = URL.createObjectURL(file);
+  videoPreview.style.display = "block";
+  dropzone.style.display = "none";
+}
+document.getElementById("btnTrim").onclick = async () => {
+  if (!videoFile) return alert("Importe d'abord une vidéo.");
+  const start = document.getElementById("vidStart").value;
+  const end = document.getElementById("vidEnd").value;
+  const form = new FormData();
+  form.append("video", videoFile);
+  form.append("start", start);
+  form.append("end", end);
+  const btn = document.getElementById("btnTrim");
+  btn.disabled = true; btn.textContent = "Découpe en cours…";
+  try {
+    const res = await fetch(API + "/api/video/trim", { method: "POST", body: form });
+    if (!res.ok) throw new Error(await res.text());
+    const { result_url } = await res.json();
+    lastVideoUrl = API + result_url;
+    videoPreview.src = lastVideoUrl + "?t=" + Date.now();
+  } catch (err) {
+    alert("Erreur : " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Découper";
+  }
+};
+document.getElementById("btnDownloadVideo").onclick = () => {
+  if (!lastVideoUrl) return alert("Découpe d'abord une vidéo.");
+  const a = document.createElement("a");
+  a.download = "video-editee.mp4";
+  a.href = lastVideoUrl;
+  a.click();
+};
+</script>
+</body>
+</html>
