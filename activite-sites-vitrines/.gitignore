@@ -1,0 +1,4 @@
+# Le dépôt est public : les données nominatives de prospection n'y sont pas versionnées.
+# Voir REPRISE.md § 5. Pour les versionner, passer le dépôt en privé puis retirer ces lignes.
+prospects/
+prospection/

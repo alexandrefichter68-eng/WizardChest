@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verdanjou — Entretien et création de jardins à Angers</title>
+<meta name="description" content="Verdanjou, entretien et création de jardins à Angers et dans la couronne sud : tonte, taille de haies, massifs, terrasses bois, clôtures. Devis gratuit.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Karla:wght@400;500;700&display=swap">
+<style>
+/* ---------- Jetons ---------- */
+:root{
+  color-scheme: light;
+  --ardoise:#2B3742;      /* ardoise de Trélazé */
+  --ardoise-deep:#1B242C;
+  --fougere:#37634A;
+  --fougere-clair:#7FA886;
+  --tuffeau:#EDEBE1;      /* pierre de tuffeau */
+  --craie:#FAF9F4;
+  --ocre:#A9722F;
+  --ocre-deep:#8A5C22;
+  --ink:#1D272B;
+  --ink-soft:#4C5A5E;
+  --rule:#D7D3C5;
+  --surface:var(--craie);
+  --surface-2:var(--tuffeau);
+  --card:#FFFFFF;
+  --band:var(--ardoise);
+  --band-ink:#F2F1EA;
+  --band-ink-soft:#BFC7CB;
+  --accent:var(--fougere);
+  --accent-ink:#FFFFFF;
+  --focus:#A9722F;
+
+  --step--1:clamp(.82rem,.79rem + .14vw,.9rem);
+  --step-0:clamp(1rem,.96rem + .2vw,1.1rem);
+  --step-1:clamp(1.2rem,1.12rem + .4vw,1.4rem);
+  --step-2:clamp(1.45rem,1.3rem + .75vw,1.9rem);
+  --step-3:clamp(1.8rem,1.5rem + 1.5vw,2.7rem);
+  --step-4:clamp(2.2rem,1.6rem + 3vw,4rem);
+
+  --gutter:clamp(1rem,4vw,2.5rem);
+  --wrap:74rem;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --ink:#E7E5DB; --ink-soft:#A9B2B3; --rule:#3A454C;
+    --surface:#151D22; --surface-2:#1B242C; --card:#1F2930;
+    --band:#111920; --band-ink:#E7E5DB; --band-ink-soft:#9AA6AC;
+    --accent:#7FA886; --accent-ink:#0F1519; --focus:#D0A05F;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ink:#E7E5DB; --ink-soft:#A9B2B3; --rule:#3A454C;
+  --surface:#151D22; --surface-2:#1B242C; --card:#1F2930;
+  --band:#111920; --band-ink:#E7E5DB; --band-ink-soft:#9AA6AC;
+  --accent:#7FA886; --accent-ink:#0F1519; --focus:#D0A05F;
+}
+
+/* ---------- Base ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--surface); color:var(--ink);
+  font-family:Karla,"Segoe UI",system-ui,-apple-system,sans-serif;
+  font-size:var(--step-0); line-height:1.65;
+}
+h1,h2,h3{font-family:Fraunces,"Iowan Old Style",Georgia,serif; line-height:1.12; text-wrap:balance; margin:0}
+p{margin:0}
+a{color:inherit}
+img,svg{max-width:100%}
+:focus-visible{outline:3px solid var(--focus); outline-offset:3px; border-radius:3px}
+
+.wrap{width:100%; max-width:var(--wrap); margin-inline:auto; padding-inline:var(--gutter)}
+.skip{position:absolute; left:-9999px; top:0; background:var(--accent); color:var(--accent-ink);
+      padding:.7rem 1.1rem; z-index:100; border-radius:0 0 6px 0; font-weight:700}
+.skip:focus{left:0}
+.eyebrow{font-size:var(--step--1); letter-spacing:.14em; text-transform:uppercase; font-weight:700; color:var(--accent)}
+.lede{font-size:var(--step-1); color:var(--ink-soft); max-width:52ch}
+
+/* ---------- Bandeau démo ---------- */
+/* BLOC DÉMO — supprimer ce <aside> et cette règle pour un site client réel */
+.demo-flag{background:var(--ocre-deep); color:#fff}
+.demo-flag p{padding-block:.55rem; font-size:var(--step--1); font-weight:500}
+.demo-flag strong{letter-spacing:.06em; text-transform:uppercase}
+
+/* ---------- En-tête ---------- */
+.masthead{position:sticky; top:env(safe-area-inset-top,0px); z-index:50;
+  background:color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--rule)}
+.masthead .bar{display:flex; align-items:center; gap:1rem; justify-content:space-between; padding-block:.7rem}
+.brand{display:flex; align-items:center; gap:.6rem; font-family:Fraunces,Georgia,serif;
+  font-weight:700; font-size:var(--step-1); text-decoration:none; letter-spacing:-.01em}
+.brand .mark{flex:none}
+.nav{display:none; gap:1.5rem; font-size:var(--step--1); font-weight:500}
+.nav a{text-decoration:none; color:var(--ink-soft); padding-block:.3rem}
+.nav a:hover{color:var(--accent)}
+@media (min-width:60rem){ .nav{display:flex} }
+
+.btn{display:inline-flex; align-items:center; gap:.5rem; font-weight:700; font-size:var(--step--1);
+  padding:.7rem 1.1rem; border-radius:2px; text-decoration:none; border:1.5px solid transparent;
+  transition:background .15s ease, color .15s ease}
+.btn-solid{background:var(--accent); color:var(--accent-ink)}
+.btn-solid:hover{background:var(--ink)}
+.btn-ghost{border-color:currentColor}
+.btn-ghost:hover{background:color-mix(in srgb, currentColor 12%, transparent)}
+.btn-lg{font-size:var(--step-0); padding:.9rem 1.4rem}
+
+/* ---------- Héros ---------- */
+.hero{background:var(--band); color:var(--band-ink); position:relative; overflow:hidden}
+.hero .inner{display:grid; gap:2.5rem; padding-block:clamp(2.5rem,7vw,4.5rem); position:relative; z-index:2}
+@media (min-width:56rem){ .hero .inner{grid-template-columns:1.15fr .85fr; align-items:center; gap:3.5rem} }
+.hero h1{font-size:var(--step-4); font-weight:600; letter-spacing:-.02em}
+.hero .lede{color:var(--band-ink-soft); margin-top:1.1rem}
+.hero .actions{display:flex; flex-wrap:wrap; gap:.8rem; margin-top:1.8rem}
+.hero .btn-ghost{color:var(--band-ink)}
+.hero-figure{margin:0}
+.zones{display:flex; flex-wrap:wrap; gap:.45rem; margin-top:2rem; padding-top:1.6rem; border-top:1px solid rgba(255,255,255,.16)}
+.zones li{list-style:none; font-size:var(--step--1); padding:.28rem .7rem; border:1px solid rgba(255,255,255,.28); border-radius:100px; color:var(--band-ink-soft)}
+.zones .label{border:0; padding-left:0; color:var(--band-ink); font-weight:700; letter-spacing:.1em; text-transform:uppercase}
+
+/* ---------- Sections ---------- */
+section{padding-block:clamp(2.75rem,7vw,4.5rem)}
+.section-head{display:grid; gap:.8rem; max-width:56ch; margin-bottom:2.2rem}
+.section-head h2{font-size:var(--step-3); font-weight:600; letter-spacing:-.015em}
+.alt{background:var(--surface-2)}
+
+.services{display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule)}
+@media (min-width:38rem){ .services{grid-template-columns:repeat(2,1fr)} }
+@media (min-width:60rem){ .services{grid-template-columns:repeat(3,1fr)} }
+.service{background:var(--card); padding:1.6rem 1.5rem; display:grid; gap:.6rem; align-content:start}
+.service h3{font-size:var(--step-1); font-weight:600}
+.service p{color:var(--ink-soft); font-size:var(--step--1); line-height:1.6}
+.service .ico{color:var(--accent)}
+
+.steps{display:grid; gap:1.6rem; counter-reset:step}
+@media (min-width:52rem){ .steps{grid-template-columns:repeat(3,1fr); gap:2rem} }
+.step{display:grid; gap:.5rem; align-content:start; padding-top:1.1rem; border-top:3px solid var(--accent)}
+.step h3{font-size:var(--step-1); font-weight:600}
+.step p{color:var(--ink-soft); font-size:var(--step--1)}
+.step .num{font-family:Fraunces,Georgia,serif; font-size:var(--step--1); font-weight:700;
+  letter-spacing:.12em; color:var(--accent)}
+
+.zone-grid{display:grid; gap:2.4rem; align-items:center}
+@media (min-width:56rem){ .zone-grid{grid-template-columns:1fr 1fr; gap:3rem} }
+.zone-list{columns:2; column-gap:1.5rem; padding:0; margin:0; list-style:none; font-size:var(--step--1)}
+.zone-list li{padding:.34rem 0; border-bottom:1px solid var(--rule); break-inside:avoid}
+
+.contact-grid{display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule)}
+@media (min-width:46rem){ .contact-grid{grid-template-columns:repeat(3,1fr)} }
+.contact-card{background:var(--card); padding:1.6rem 1.5rem; display:grid; gap:.35rem; align-content:start}
+.contact-card .k{font-size:var(--step--1); letter-spacing:.12em; text-transform:uppercase; font-weight:700; color:var(--ink-soft)}
+.contact-card .v{font-family:Fraunces,Georgia,serif; font-size:var(--step-1); font-weight:600; text-decoration:none}
+.contact-card a.v:hover{color:var(--accent)}
+.contact-card .n{font-size:var(--step--1); color:var(--ink-soft)}
+.cta-band{background:var(--accent); color:var(--accent-ink)}
+.cta-band .inner{display:grid; gap:1.4rem; align-items:center; padding-block:clamp(2rem,5vw,3rem)}
+@media (min-width:52rem){ .cta-band .inner{grid-template-columns:1fr auto; gap:2.5rem} }
+.cta-band h2{font-size:var(--step-2); font-weight:600}
+.cta-band p{opacity:.9; margin-top:.4rem}
+.cta-band .btn-solid{background:var(--ink); color:var(--surface)}
+.cta-band .btn-solid:hover{background:var(--ardoise-deep); color:#fff}
+
+footer{background:var(--band); color:var(--band-ink-soft); font-size:var(--step--1)}
+footer .inner{display:grid; gap:1.4rem; padding-block:2.4rem}
+@media (min-width:52rem){ footer .inner{grid-template-columns:1fr 1fr} }
+footer h2{font-size:var(--step-0); color:var(--band-ink); font-family:Karla,sans-serif;
+  letter-spacing:.12em; text-transform:uppercase; margin-bottom:.5rem}
+footer a{color:var(--band-ink)}
+.placeholder{color:var(--band-ink); background:rgba(169,114,47,.28); padding:0 .3em; border-radius:2px}
+
+@media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important} }
+</style>
+</head>
+<body>
+<a class="skip" href="#contenu">Aller au contenu</a>
+
+<!-- BLOC DÉMO — à supprimer pour un site client réel -->
+<aside class="demo-flag">
+  <div class="wrap"><p><strong>Démonstration</strong> — Verdanjou est une entreprise fictive. Cette page sert uniquement à montrer la mise en page, la lisibilité sur téléphone et le niveau de finition proposés. Coordonnées et numéros non attribuables.</p></div>
+</aside>
+
+<header class="masthead">
+  <div class="wrap bar">
+    <a class="brand" href="#haut">
+      <svg class="mark" width="30" height="30" viewBox="0 0 30 30" role="img" aria-label="Logo Verdanjou : une feuille stylisée">
+        <path d="M15 27C15 27 4 21.5 4 13.2 4 7.1 9 3 15 3s11 4.1 11 10.2C26 21.5 15 27 15 27Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M15 25V8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M15 14.5 9.6 11M15 19 20.4 15.5M15 11 19.4 8.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      Verdanjou
+    </a>
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#services">Services</a>
+      <a href="#methode">Comment ça se passe</a>
+      <a href="#zone">Zone d'intervention</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <a class="btn btn-solid" href="tel:+33261910470">Appeler</a>
+  </div>
+</header>
+
+<main id="contenu">
+<section id="haut" class="hero">
+  <div class="wrap inner">
+    <div>
+      <p class="eyebrow" style="color:var(--fougere-clair)">Jardinier-paysagiste · Angers (49)</p>
+      <h1>Un jardin tenu toute l'année, sans avoir à y penser.</h1>
+      <p class="lede">Tonte, taille de haies, massifs, terrasses bois. Nous intervenons chez les particuliers et les copropriétés d'Angers et de la couronne sud. Devis gratuit après visite.</p>
+      <div class="actions">
+        <a class="btn btn-solid btn-lg" href="tel:+33261910470">02 61 91 04 70</a>
+        <a class="btn btn-ghost btn-lg" href="mailto:contact@verdanjou.example?subject=Demande%20de%20devis">Demander un devis</a>
+      </div>
+      <ul class="zones">
+        <li class="label">Nous intervenons à</li>
+        <li>Angers</li><li>Les Ponts-de-Cé</li><li>Mûrs-Érigné</li><li>Sainte-Gemmes-sur-Loire</li><li>Trélazé</li><li>Bouchemaine</li>
+      </ul>
+    </div>
+    <figure class="hero-figure">
+      <svg viewBox="12 78 396 174" role="img" aria-labelledby="h-t h-d" style="width:100%;height:auto">
+        <title id="h-t">Silhouette d'une haie taillée devant une maison en tuffeau à toit d'ardoise</title>
+        <desc id="h-d">Illustration au trait : une maison basse coiffée d'un toit d'ardoise, bordée d'une haie taillée, d'un arbre et d'un massif.</desc>
+        
+        <!-- ciel / horizon -->
+        <line x1="0" y1="238" x2="420" y2="238" stroke="#7FA886" stroke-opacity=".45" stroke-width="1.5"/>
+        <!-- maison -->
+        <path d="M232 238v-72l54-34 54 34v72" fill="none" stroke="#EDEBE1" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M222 168 286 126l64 42" fill="none" stroke="#7FA886" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <rect x="270" y="196" width="32" height="42" fill="none" stroke="#EDEBE1" stroke-width="1.6"/>
+        <rect x="246" y="192" width="16" height="16" fill="none" stroke="#EDEBE1" stroke-width="1.4"/>
+        <rect x="310" y="192" width="16" height="16" fill="none" stroke="#EDEBE1" stroke-width="1.4"/>
+        <!-- arbre -->
+        <path d="M120 238v-74" stroke="#EDEBE1" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+        <path d="M120 176c-26 0-44-16-44-38s20-40 44-40 44 18 44 40-18 38-44 38Z" fill="none" stroke="#7FA886" stroke-width="2.2"/>
+        <path d="M120 186l-22-16M120 164l24-18M120 200l-26-12" stroke="#EDEBE1" stroke-width="1.3" stroke-linecap="round" fill="none"/>
+        <!-- haie taillée -->
+        <rect x="24" y="210" width="176" height="28" rx="3" fill="none" stroke="#7FA886" stroke-width="2.2"/>
+        <path d="M44 210v28M66 210v28M88 210v28M110 210v28M132 210v28M154 210v28M176 210v28" stroke="#7FA886" stroke-opacity=".5" stroke-width="1" fill="none"/>
+        <!-- massif -->
+        <path d="M212 238c4-14 14-22 26-22s22 8 26 22" fill="none" stroke="#EDEBE1" stroke-width="1.6"/>
+        <path d="M356 238c3-11 11-18 21-18s18 7 21 18" fill="none" stroke="#EDEBE1" stroke-width="1.6"/>
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section id="services" class="alt">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Ce que nous faisons</p>
+      <h2>Six prestations, expliquées sans jargon</h2>
+      <p class="lede">Vous pouvez nous confier l'entretien régulier, un chantier ponctuel, ou les deux.</p>
+    </div>
+    <div class="services">
+      <article class="service">
+        <svg class="ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 19h18M6 19v-5M10 19v-8M14 19v-6M18 19v-9"/></svg>
+        <h3>Entretien de jardin</h3>
+        <p>Tonte, débroussaillage, désherbage manuel, ramassage des feuilles. Passage ponctuel ou contrat à l'année, selon ce qui vous arrange.</p>
+      </article>
+      <article class="service">
+        <svg class="ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 16h16M8 4v16M16 4v16"/></svg>
+        <h3>Taille de haies et arbustes</h3>
+        <p>Taille de formation et taille d'entretien, laurier, charmille, thuya, photinia. Hauteur maîtrisée, ligne droite, coupe nette.</p>
+      </article>
+      <article class="service">
+        <svg class="ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 21c0-5 3-8 7-9-1 5-3 8-7 9Zm0 0c0-5-3-8-7-9 1 5 3 8 7 9Zm0 0V9"/><circle cx="12" cy="5" r="2.4"/></svg>
+        <h3>Massifs et plantations</h3>
+        <p>Choix des végétaux selon l'exposition et le sol, préparation de la terre, paillage. Plan de plantation remis avec le devis.</p>
+      </article>
+      <article class="service">
+        <svg class="ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 9h18v10H3zM3 13h18M8 9v10M14 9v10M5 9V6h14v3"/></svg>
+        <h3>Terrasses bois et pas japonais</h3>
+        <p>Pose de lames en bois ou composite sur lambourdes, cheminements en pierre. Niveau vérifié, évacuation de l'eau prévue.</p>
+      </article>
+      <article class="service">
+        <svg class="ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 20V7m16 13V7M4 10h16M4 14h16M8 7V4m8 3V4"/></svg>
+        <h3>Clôtures et portails</h3>
+        <p>Panneaux rigides, ganivelle, brande, occultation. Scellement des poteaux et réglage du portail inclus dans la pose.</p>
+      </article>
+      <article class="service">
+        <svg class="ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2L5 8Zm3-3h8l1 3H7l1-3Zm2 7v6m4-6v6"/></svg>
+        <h3>Évacuation des déchets verts</h3>
+        <p>Nous repartons avec les tontes, branches et souches. Le chantier est laissé balayé, rien ne reste à gérer pour vous.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="methode">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Comment ça se passe</p>
+      <h2>Trois étapes, pas de mauvaise surprise</h2>
+    </div>
+    <div class="steps">
+      <article class="step">
+        <p class="num">Étape 1</p>
+        <h3>Visite et devis</h3>
+        <p>Nous passons voir le terrain, nous mesurons, nous écoutons ce que vous voulez. Le devis écrit arrive sous 48 heures. Il est gratuit et sans engagement.</p>
+      </article>
+      <article class="step">
+        <p class="num">Étape 2</p>
+        <h3>Date fixée, intervention</h3>
+        <p>Vous validez le devis, nous fixons une date ensemble. Nous venons avec le matériel nécessaire. Vous n'avez pas besoin d'être présent si l'accès est prévu.</p>
+      </article>
+      <article class="step">
+        <p class="num">Étape 3</p>
+        <h3>Chantier rendu propre</h3>
+        <p>Déchets verts évacués, allées balayées. Nous faisons le point avec vous avant de partir, et nous reprenons ce qui ne convient pas.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="zone" class="alt">
+  <div class="wrap zone-grid">
+    <div>
+      <div class="section-head" style="margin-bottom:1.4rem">
+        <p class="eyebrow">Zone d'intervention</p>
+        <h2>Angers et la couronne sud, dans un rayon de 20 km</h2>
+      </div>
+      <p class="lede" style="font-size:var(--step-0); margin-bottom:1.2rem">Au-delà de ce périmètre, appelez-nous : nous répondons selon le chantier et la période. Pas de frais de déplacement à l'intérieur de la zone.</p>
+      <ul class="zone-list">
+        <li>Angers</li><li>Avrillé</li><li>Beaucouzé</li><li>Bouchemaine</li>
+        <li>Les Ponts-de-Cé</li><li>Mûrs-Érigné</li><li>Sainte-Gemmes-sur-Loire</li><li>Trélazé</li>
+        <li>Saint-Barthélemy-d'Anjou</li><li>Écouflant</li>
+      </ul>
+    </div>
+    <figure style="margin:0">
+      <svg viewBox="0 0 400 300" role="img" aria-labelledby="m-t m-d" style="width:100%;height:auto">
+        <title id="m-t">Carte schématique de la zone d'intervention autour d'Angers</title>
+        <desc id="m-d">Schéma : Angers au centre, entourée d'un cercle de 20 kilomètres, avec les communes desservies positionnées autour et la Loire et la Maine tracées en travers.</desc>
+        <circle cx="196" cy="150" r="116" fill="none" stroke="var(--accent)" stroke-opacity=".28" stroke-width="1.4" stroke-dasharray="5 6"/>
+        <circle cx="196" cy="150" r="78" fill="none" stroke="var(--accent)" stroke-opacity=".18" stroke-width="1.2"/>
+        <path d="M18 196c60-12 104 16 160 8s104-40 204-20" fill="none" stroke="var(--accent)" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/>
+        <path d="M170 18c8 46-4 78 4 122" fill="none" stroke="var(--accent)" stroke-opacity=".5" stroke-width="2.4" stroke-linecap="round"/>
+        <g fill="var(--ink-soft)" font-family="Karla, sans-serif" font-size="11">
+          <circle cx="196" cy="150" r="6" fill="var(--accent)"/>
+          <text x="208" y="147" fill="var(--ink)" font-size="13" font-weight="700">Angers</text>
+          <circle cx="168" cy="86" r="3.2"/><text x="177" y="89">Avrillé</text>
+          <circle cx="104" cy="132" r="3.2"/><text x="113" y="135">Beaucouzé</text>
+          <circle cx="112" cy="206" r="3.2"/><text x="121" y="209">Bouchemaine</text>
+          <circle cx="212" cy="222" r="3.2"/><text x="221" y="225">Les Ponts-de-Cé</text>
+          <circle cx="184" cy="258" r="3.2"/><text x="193" y="261">Mûrs-Érigné</text>
+          <circle cx="150" cy="238" r="3.2"/><text x="143" y="241" text-anchor="end">Ste-Gemmes</text>
+          <circle cx="272" cy="176" r="3.2"/><text x="281" y="179">Trélazé</text>
+          <circle cx="262" cy="118" r="3.2"/><text x="271" y="121">St-Barthélemy</text>
+          <circle cx="222" cy="74" r="3.2"/><text x="231" y="77">Écouflant</text>
+        </g>
+        <text x="196" y="286" text-anchor="middle" font-family="Karla, sans-serif" font-size="10" fill="var(--ink-soft)" letter-spacing="1.4">SCHÉMA INDICATIF — RAYON D'ENVIRON 20 KM</text>
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section id="contact">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Nous joindre</p>
+      <h2>Un appel suffit pour fixer la visite</h2>
+      <p class="lede">Nous répondons pendant les heures d'ouverture. Si nous sommes sur un chantier, laissez un message : nous rappelons le soir même.</p>
+    </div>
+    <div class="contact-grid">
+      <div class="contact-card">
+        <p class="k">Téléphone</p>
+        <a class="v" href="tel:+33261910470">02 61 91 04 70</a>
+        <p class="n">Mobile : <a href="tel:+33639980470">06 39 98 04 70</a></p>
+      </div>
+      <div class="contact-card">
+        <p class="k">E-mail</p>
+        <a class="v" href="mailto:contact@verdanjou.example?subject=Demande%20de%20devis">contact@verdanjou.example</a>
+        <p class="n">Réponse sous 1 jour ouvré</p>
+      </div>
+      <div class="contact-card">
+        <p class="k">Horaires</p>
+        <p class="v">Lun – Ven, 8 h – 18 h</p>
+        <p class="n">Samedi sur rendez-vous · Dimanche fermé</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band" style="padding-block:0">
+  <div class="wrap inner">
+    <div>
+      <h2>Vous voulez un devis pour la saison qui arrive&nbsp;?</h2>
+      <p>Dites-nous la surface et ce qu'il y a à faire, nous passons mesurer.</p>
+    </div>
+    <a class="btn btn-solid btn-lg" href="tel:+33261910470">Appeler le 02 61 91 04 70</a>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap inner">
+    <div>
+      <h2>Verdanjou</h2>
+      <p>Entretien et création de jardins à Angers et dans la couronne sud.<br>
+      <span class="placeholder">[Adresse du siège]</span>, 49000 Angers</p>
+    </div>
+    <div>
+      <h2>Informations légales</h2>
+      <p>SIRET <span class="placeholder">[à compléter]</span> · Assurance responsabilité civile professionnelle <span class="placeholder">[assureur et n° de contrat]</span><br>
+      Directeur de la publication : <span class="placeholder">[nom]</span> · Hébergeur : <span class="placeholder">[nom et adresse de l'hébergeur]</span></p>
+      <p style="margin-top:.8rem">Page de démonstration — entreprise fictive, coordonnées non attribuables.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
