@@ -13,6 +13,13 @@ et la prochaine action.
 Offre, démonstration et supports commerciaux : **terminés**.
 Prospection : **préparée, rien n'est parti**. Zéro contact, zéro commande, zéro euro.
 
+## Liens
+
+- Aperçu privé de la démonstration : https://claude.ai/artifact/A4zR5yF8gwovW6DcDi7jzF
+- Dossier prospects : page privée « Dossier Prospects Angers » dans votre galerie claude.ai
+
+Ces deux pages sont privées : visibles par vous seul, pas par un prospect.
+
 ## Plan du dossier
 
 | Dossier | Contenu |

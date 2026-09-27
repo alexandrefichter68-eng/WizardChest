@@ -17,11 +17,11 @@
 | Réponses aux objections | `offre/06-objections.md` | Terminé |
 | Message de remise | `offre/07-message-de-livraison.md` | Terminé |
 | Note de conformité prospection | `offre/08-conformite-prospection.md` | Terminé |
-| Démonstration complète | `demonstration/index.html` | Terminé, rendu vérifié à 390 px et 1280 px |
-| 24 prospects vérifiés | *hors dépôt — voir § 5* | Terminé |
-| Sélection des 5 prioritaires | *hors dépôt — voir § 5* | Terminé |
-| 3 diagnostics + première section | *hors dépôt — voir § 5* | Terminé |
-| 5 messages de prospection | *hors dépôt — voir § 5* | Rédigés, **non envoyés** |
+| Démonstration complète | `demonstration/index.html` — aperçu privé : https://claude.ai/artifact/A4zR5yF8gwovW6DcDi7jzF | Terminé, rendu vérifié à 390 px et 1280 px |
+| 24 prospects vérifiés | *hors dépôt* — page privée « Dossier Prospects Angers » | Terminé |
+| Sélection des 5 prioritaires | *hors dépôt — même page privée* | Terminé |
+| 3 diagnostics + première section | *hors dépôt — même page privée* | Terminé |
+| 5 messages de prospection | *hors dépôt — même page privée* + 5 brouillons Gmail | Rédigés, **non envoyés** |
 | Bon de commande | `commandes/01-bon-de-commande-modele.md` | Modèle, non validé juridiquement |
 | Configuration du paiement | `commandes/02-paiement-a-configurer.md` | Prêt à recopier chez un prestataire |
 | Guide client | `livraisons/01-notice-client.md` | Terminé |
@@ -36,6 +36,15 @@ Aucun message n'a été envoyé. Aucune autorisation d'envoi n'a été demandée
 donnée. Rien n'a été souscrit, rien n'a été dépensé. Les 24 prospects sont des
 entreprises réelles identifiées sur des sources publiques — ce ne sont ni des
 contacts, ni des prospects qualifiés au sens commercial.
+
+## 2 bis. Cinq brouillons attendent dans votre Gmail
+
+Cinq brouillons ont été créés dans votre messagerie, **sans destinataire et non
+envoyés**. Leur objet commence par `[BROUILLON À COMPLÉTER — M1…M5]` et chacun
+s'ouvre sur les trois choses à faire avant envoi. Le préfixe de l'objet est à
+retirer en même temps que ce bloc d'instructions.
+
+Aucun de ces brouillons ne peut partir par accident : ils n'ont pas de destinataire.
 
 ## 3. Autorisations obtenues, et leurs limites
 
@@ -66,8 +75,14 @@ prospects n'y est donc pas versionné : il contient les noms, adresses et
 identifiants de 24 entreprises réelles, assortis d'un jugement sur leur présence
 en ligne.
 
-Il est conservé dans une **page privée sur votre compte claude.ai**, dont le lien
-vous a été donné en fin de session. Cette page n'est visible que par vous.
+Il est conservé dans une **page privée sur votre compte claude.ai** : votre galerie claude.ai (`claude.ai/code/artifacts`), page intitulée
+**« Dossier Prospects Angers »**. Son adresse n'est pas recopiée ici : ce fichier,
+lui, est public.
+Cette page n'est visible que par vous.
+
+La démonstration a elle aussi un aperçu privé : https://claude.ai/artifact/A4zR5yF8gwovW6DcDi7jzF
+**Ce lien ne peut pas être envoyé à un prospect** : il ne l'ouvrira pas. Pour la
+prospection, il faut publier `demonstration/index.html` à une adresse publique.
 
 Si vous préférez que ces fichiers vivent dans le dépôt : passez-le en privé
 (`Settings` → `General` → `Danger Zone` → `Change visibility`), puis retirez les

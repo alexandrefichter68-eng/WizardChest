@@ -7,9 +7,9 @@
 | Action | Détail |
 |---|---|
 | Recherches web publiques | ~25 requêtes sur des annuaires et registres d'entreprises français |
-| Publication d'un aperçu privé | La démonstration a été publiée en page privée sur le compte claude.ai de l'utilisateur |
-| Publication d'un dossier privé | Le dossier prospects a été publié en page privée sur le même compte |
-| Brouillons créés dans Gmail | 5 brouillons sans destinataire, non envoyés |
+| Publication d'un aperçu privé | Démonstration publiée en page privée : https://claude.ai/artifact/A4zR5yF8gwovW6DcDi7jzF |
+| Publication d'un dossier privé | Dossier prospects publié en page privée « Dossier Prospects Angers » |
+| Brouillons créés dans Gmail | 5 brouillons sans destinataire, non envoyés, objets préfixés `[BROUILLON À COMPLÉTER]` |
 | Envois de messages | **Aucun** |
 | Appels téléphoniques | **Aucun** — aucun outil téléphonique disponible |
 | Souscriptions, paiements, dépenses | **Aucun** |
